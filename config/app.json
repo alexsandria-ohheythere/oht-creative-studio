@@ -1,0 +1,25 @@
+{
+  "nav": [
+    { "id": "dash", "label": "Dashboard", "icon": "⊞", "section": "Overview", "roles": ["command", "freelance"] },
+    { "id": "brand", "label": "Brand House", "icon": "◈", "section": "Houses", "roles": ["command"], "pill": "3" },
+    { "id": "cont", "label": "Content Studio", "icon": "▣", "section": "Houses", "roles": ["command", "freelance"], "pill": "84" },
+    { "id": "pub", "label": "Publishing House", "icon": "⊛", "section": "Houses", "roles": ["command"], "pill": "12" },
+    { "id": "anly", "label": "Analytics House", "icon": "◉", "section": "Houses", "roles": ["command"] },
+    { "id": "camp", "label": "Campaigns", "icon": "◇", "section": "Workspace", "roles": ["command"], "pill": "5" },
+    { "id": "asst", "label": "Asset Library", "icon": "◻", "section": "Workspace", "roles": ["command", "freelance"] },
+    { "id": "appr", "label": "Approvals", "icon": "◌", "section": "Workspace", "roles": ["command", "freelance"] }
+  ],
+  "statuses": [
+    { "id": "briefed", "label": "Briefed", "color": "#9494AA" },
+    { "id": "progress", "label": "In Progress", "color": "#78b8e8" },
+    { "id": "submitted", "label": "Submitted", "color": "#ffbb44" },
+    { "id": "changes", "label": "Changes Req.", "color": "#ff6464" },
+    { "id": "approved", "label": "Approved", "color": "#64BC46" },
+    { "id": "scheduled", "label": "Scheduled", "color": "#EE268C" }
+  ],
+  "brandColors": {
+    "Brand One": "#EE268C",
+    "Brand Two": "#AED8FF",
+    "Brand Three": "#FFAEF1"
+  }
+}
