@@ -30,7 +30,7 @@ export default async function DashboardPage() {
   // Load brands. RLS scopes these too (command sees all, freelancers see one).
   const { data: brands } = await supabase
     .from('brands')
-    .select('id, name, tagline, color, voice, style_guide, messaging, archived')
+    .select('id, name, tagline, color, voice, style_guide, messaging, archived, mission, positioning, audience, personality, category, status, brand_book')
     .eq('archived', false)
     .order('created_at', { ascending: true });
 
