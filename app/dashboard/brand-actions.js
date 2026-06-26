@@ -24,12 +24,22 @@ export async function saveBrand(prevState, formData) {
   const style_guide = (formData.get('style_guide') || '').trim();
   const messaging = parseMessaging(formData.get('messaging'));
 
+  // Strategy fields (AI-context core)
+  const category = (formData.get('category') || '').trim();
+  const mission = (formData.get('mission') || '').trim();
+  const positioning = (formData.get('positioning') || '').trim();
+  const audience = (formData.get('audience') || '').trim();
+  const personality = parseMessaging(formData.get('personality'));
+
   if (!name) {
     return { error: 'Brand name is required.' };
   }
 
   const supabase = await createClient();
-  const payload = { name, tagline, color, voice, style_guide, messaging };
+  const payload = {
+    name, tagline, color, voice, style_guide, messaging,
+    category, mission, positioning, audience, personality,
+  };
 
   let error;
   if (id) {
