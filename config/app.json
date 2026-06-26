@@ -1,10 +1,10 @@
 {
   "nav": [
     { "id": "dash", "label": "Dashboard", "icon": "⊞", "section": "Overview", "roles": ["command", "freelance"] },
-    { "id": "brand", "label": "Brand House", "icon": "◈", "section": "Houses", "roles": ["command"], "pill": "3" },
-    { "id": "cont", "label": "Content Studio", "icon": "▣", "section": "Houses", "roles": ["command", "freelance"], "pill": "84" },
-    { "id": "pub", "label": "Publishing House", "icon": "⊛", "section": "Houses", "roles": ["command"], "pill": "12" },
-    { "id": "anly", "label": "Analytics House", "icon": "◉", "section": "Houses", "roles": ["command"] },
+    { "id": "brand", "label": "Brand Center", "icon": "◈", "section": "Centers", "roles": ["command", "freelance"] },
+    { "id": "cont", "label": "Content Center", "icon": "▣", "section": "Centers", "roles": ["command", "freelance"] },
+    { "id": "pub", "label": "Publishing Center", "icon": "⊛", "section": "Centers", "roles": ["command"] },
+    { "id": "anly", "label": "Analytics Center", "icon": "◉", "section": "Centers", "roles": ["command"] },
     { "id": "camp", "label": "Campaigns", "icon": "◇", "section": "Workspace", "roles": ["command"], "pill": "5" },
     { "id": "asst", "label": "Asset Library", "icon": "◻", "section": "Workspace", "roles": ["command", "freelance"] },
     { "id": "appr", "label": "Approvals", "icon": "◌", "section": "Workspace", "roles": ["command", "freelance"] }
@@ -18,8 +18,10 @@
     { "id": "scheduled", "label": "Scheduled", "color": "#EE268C" }
   ],
   "brandColors": {
-    "Brand One": "#EE268C",
-    "Brand Two": "#AED8FF",
-    "Brand Three": "#FFAEF1"
+    "OH HEY THERE": "#EE268C",
+    "Matcha Club": "#64BC46",
+    "Sky Studio": "#AED8FF",
+    "Lavender Lane": "#FFAEF1",
+    "Lime Lab": "#DDEE26"
   }
 }
