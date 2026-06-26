@@ -18,10 +18,9 @@
     { "id": "scheduled", "label": "Scheduled", "color": "#EE268C" }
   ],
   "brandColors": {
-    "OH HEY THERE": "#EE268C",
-    "Matcha Club": "#64BC46",
-    "Sky Studio": "#AED8FF",
-    "Lavender Lane": "#FFAEF1",
-    "Lime Lab": "#DDEE26"
+    "OH HEY THERE Matcha Cafe": "#EE268C",
+    "DOMO": "#64BC46",
+    "More Ahead": "#AED8FF",
+    "Goods Bodega": "#DDEE26"
   }
 }
