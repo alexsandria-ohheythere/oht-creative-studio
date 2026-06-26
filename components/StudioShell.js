@@ -271,12 +271,18 @@ function BrandCenter({ brands, isCommand, content }) {
   // ----- DETAIL MODE -----
   if (view === 'detail' && open) {
     const items = content.filter((c) => c.brand === open.name);
+    const field = (label, value) => (
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text3)', marginBottom: 3 }}>{label}</div>
+        <div style={{ fontSize: 13, color: value ? 'var(--text)' : 'var(--text3)', lineHeight: 1.5 }}>{value || 'Not set'}</div>
+      </div>
+    );
     return (
       <>
         <div className="ph">
           <div>
             <div className="pt" style={{ color: open.color }}>{open.name}</div>
-            <div className="ps">{open.tagline}</div>
+            <div className="ps">{open.tagline}{open.category ? ` · ${open.category}` : ''}</div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             {isCommand && <button className="btn bg" onClick={() => openEdit(open)}>✎ Edit</button>}
@@ -284,6 +290,31 @@ function BrandCenter({ brands, isCommand, content }) {
           </div>
         </div>
 
+        {/* Identity + Strategy */}
+        <div className="dcols" style={{ marginBottom: 18 }}>
+          <div className="card">
+            <div className="ch"><div className="ct">Brand Identity</div></div>
+            <div className="cb">
+              {field('Mission', open.mission)}
+              {field('Positioning', open.positioning)}
+              {field('Category', open.category)}
+            </div>
+          </div>
+          <div className="card">
+            <div className="ch"><div className="ct">Strategy</div></div>
+            <div className="cb">
+              {field('Target Audience', open.audience)}
+              <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text3)', marginBottom: 5 }}>Personality</div>
+              <div className="bmr">
+                {(open.personality || []).length === 0
+                  ? <span style={{ fontSize: 12, color: 'var(--text3)' }}>Not set</span>
+                  : (open.personality || []).map((p, i) => <span className="tag" key={i} style={{ color: open.color }}>{p}</span>)}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Voice + Style + Messaging */}
         <div className="dcols">
           <div className="card">
             <div className="ch"><div className="ct">Brand Voice</div></div>
@@ -412,6 +443,32 @@ function BrandForm({ brand, onDone, onCancel }) {
           <div style={{ marginBottom: 16 }}>
             <label style={lbl}>Tagline</label>
             <input style={inp} name="tagline" defaultValue={brand?.tagline || ''} placeholder="Short descriptor" />
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={lbl}>Category</label>
+            <input style={inp} name="category" defaultValue={brand?.category || ''} placeholder="e.g. Specialty Cafe, Tea Line, Apparel" />
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={lbl}>Mission</label>
+            <textarea style={{ ...inp, minHeight: 70, resize: 'vertical' }} name="mission" defaultValue={brand?.mission || ''} placeholder="What this brand exists to do." />
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={lbl}>Positioning</label>
+            <input style={inp} name="positioning" defaultValue={brand?.positioning || ''} placeholder="One sentence: who you are for whom." />
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={lbl}>Target Audience</label>
+            <textarea style={{ ...inp, minHeight: 70, resize: 'vertical' }} name="audience" defaultValue={brand?.audience || ''} placeholder="Who you're speaking to." />
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={lbl}>Brand Personality</label>
+            <input style={inp} name="personality" defaultValue={(brand?.personality || []).join(', ')} placeholder="e.g. Curious, Warm, Confident, Playful" />
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 5 }}>Comma-separated traits.</div>
           </div>
 
           <div style={{ marginBottom: 16 }}>
