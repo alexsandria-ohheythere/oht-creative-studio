@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useActionState } from 'react';
 import appConfig from '../config/app.json';
+import { saveBrand, archiveBrand } from '../app/dashboard/brand-actions';
 
 // Access model:
 //  - role 'command'   → full access (Alex, CJ)
@@ -250,10 +251,25 @@ function Approvals({ content, role, brandScope, byStatus, brandColor }) {
 // BRAND CENTER — manage 5+ brands: voice, style, messaging, templates
 // =====================================================================
 function BrandCenter({ brands, isCommand, content }) {
+  // view: 'list' | 'detail' | 'form'
+  const [view, setView] = useState('list');
   const [openId, setOpenId] = useState(null);
+  const [editing, setEditing] = useState(null); // brand object or null (new)
+
   const open = brands.find((b) => b.id === openId);
 
-  if (open) {
+  function openDetail(id) { setOpenId(id); setView('detail'); }
+  function openNew() { setEditing(null); setView('form'); }
+  function openEdit(brand) { setEditing(brand); setView('form'); }
+  function backToList() { setView('list'); setOpenId(null); setEditing(null); }
+
+  // ----- FORM MODE -----
+  if (view === 'form') {
+    return <BrandForm brand={editing} onDone={backToList} onCancel={backToList} />;
+  }
+
+  // ----- DETAIL MODE -----
+  if (view === 'detail' && open) {
     const items = content.filter((c) => c.brand === open.name);
     return (
       <>
@@ -262,17 +278,20 @@ function BrandCenter({ brands, isCommand, content }) {
             <div className="pt" style={{ color: open.color }}>{open.name}</div>
             <div className="ps">{open.tagline}</div>
           </div>
-          <button className="btn bg" onClick={() => setOpenId(null)}>← All brands</button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {isCommand && <button className="btn bg" onClick={() => openEdit(open)}>✎ Edit</button>}
+            <button className="btn bg" onClick={backToList}>← All brands</button>
+          </div>
         </div>
 
         <div className="dcols">
           <div className="card">
             <div className="ch"><div className="ct">Brand Voice</div></div>
-            <div className="cb" style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.6 }}>
+            <div className="cb" style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
               {open.voice || 'No voice defined yet.'}
             </div>
             <div className="ch" style={{ borderTop: '1px solid var(--border)' }}><div className="ct">Style Guidelines</div></div>
-            <div className="cb" style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.6 }}>
+            <div className="cb" style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
               {open.style_guide || 'No style guide defined yet.'}
             </div>
           </div>
@@ -299,6 +318,7 @@ function BrandCenter({ brands, isCommand, content }) {
     );
   }
 
+  // ----- LIST MODE -----
   return (
     <>
       <div className="ph">
@@ -306,13 +326,14 @@ function BrandCenter({ brands, isCommand, content }) {
           <div className="pt">Brand Center</div>
           <div className="ps">{brands.length} brands · voice, style, messaging & templates in one place</div>
         </div>
+        {isCommand && <button className="btn bl" onClick={openNew}>＋ Add Brand</button>}
       </div>
 
       <div className="bgrid">
         {brands.map((b) => {
           const items = content.filter((c) => c.brand === b.name);
           return (
-            <div className="bcard" key={b.id} onClick={() => setOpenId(b.id)}>
+            <div className="bcard" key={b.id} onClick={() => openDetail(b.id)}>
               <div className="bc-hd">
                 <div className="bc-av" style={{ background: b.color + '22', color: b.color }}>
                   {(b.name || '?').slice(0, 2).toUpperCase()}
@@ -342,12 +363,102 @@ function BrandCenter({ brands, isCommand, content }) {
         })}
 
         {isCommand && (
-          <div className="brand-new" onClick={() => alert('Add Brand: insert a row into public.brands (name, tagline, color, voice, style_guide, messaging). UI form coming next.')}>
+          <div className="brand-new" onClick={openNew}>
             <div style={{ fontSize: 30, marginBottom: 8 }}>＋</div>
             <div style={{ fontWeight: 600 }}>Add Brand</div>
           </div>
         )}
       </div>
+    </>
+  );
+}
+
+// Create / edit brand form. Uses a server action; revalidates the dashboard
+// so the new/updated brand appears after save.
+function BrandForm({ brand, onDone, onCancel }) {
+  const [state, formAction, pending] = useActionState(saveBrand, {});
+  const [color, setColor] = useState(brand?.color || '#EE268C');
+
+  // When the save succeeds, return to the list.
+  if (state?.ok) {
+    // schedule the transition out of render
+    setTimeout(onDone, 0);
+  }
+
+  const palette = ['#EE268C', '#64BC46', '#AED8FF', '#FFAEF1', '#DDEE26'];
+  const lbl = { fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text3)', marginBottom: 6, display: 'block' };
+  const inp = { width: '100%', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--rs)', padding: '9px 12px', color: 'var(--text)', fontSize: 13, fontFamily: "'Inter',sans-serif" };
+
+  return (
+    <>
+      <div className="ph">
+        <div>
+          <div className="pt">{brand ? 'Edit Brand' : 'New Brand'}</div>
+          <div className="ps">{brand ? 'Update this brand’s identity' : 'Add a brand to your Creative OS'}</div>
+        </div>
+        <button className="btn bg" onClick={onCancel}>← Cancel</button>
+      </div>
+
+      <form action={formAction} style={{ maxWidth: 680 }}>
+        {brand?.id && <input type="hidden" name="id" value={brand.id} />}
+        <input type="hidden" name="color" value={color} />
+
+        <div className="card" style={{ padding: 22 }}>
+          <div style={{ marginBottom: 16 }}>
+            <label style={lbl}>Brand Name *</label>
+            <input style={inp} name="name" defaultValue={brand?.name || ''} placeholder="e.g. OH HEY THERE Matcha Cafe" required />
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={lbl}>Tagline</label>
+            <input style={inp} name="tagline" defaultValue={brand?.tagline || ''} placeholder="Short descriptor" />
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={lbl}>Brand Color</label>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              {palette.map((c) => (
+                <div
+                  key={c}
+                  onClick={() => setColor(c)}
+                  style={{ width: 28, height: 28, borderRadius: 6, background: c, cursor: 'pointer', border: color === c ? '2px solid var(--text)' : '2px solid transparent' }}
+                />
+              ))}
+              <input type="color" value={color} onChange={(e) => setColor(e.target.value)} style={{ width: 36, height: 28, background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }} />
+              <span style={{ fontSize: 12, color: 'var(--text3)' }}>{color}</span>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={lbl}>Brand Voice</label>
+            <textarea style={{ ...inp, minHeight: 90, resize: 'vertical' }} name="voice" defaultValue={brand?.voice || ''} placeholder="How this brand speaks — tone, personality, attitude." />
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={lbl}>Style Guidelines</label>
+            <textarea style={{ ...inp, minHeight: 90, resize: 'vertical' }} name="style_guide" defaultValue={brand?.style_guide || ''} placeholder="Visual rules — colors, type, imagery, do’s and don’ts." />
+          </div>
+
+          <div style={{ marginBottom: 4 }}>
+            <label style={lbl}>Approved Messaging</label>
+            <textarea style={{ ...inp, minHeight: 80, resize: 'vertical' }} name="messaging" defaultValue={(brand?.messaging || []).join('\n')} placeholder="One pillar per line (or comma-separated)" />
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 5 }}>One messaging pillar per line.</div>
+          </div>
+        </div>
+
+        {state?.error && (
+          <div style={{ marginTop: 14, padding: '10px 14px', background: 'rgba(255,100,100,.12)', border: '1px solid rgba(255,100,100,.3)', borderRadius: 'var(--rs)', color: '#ff6464', fontSize: 13 }}>
+            {state.error}
+          </div>
+        )}
+
+        <div style={{ marginTop: 16, display: 'flex', gap: 10 }}>
+          <button className="btn bl" type="submit" disabled={pending}>
+            {pending ? 'Saving…' : brand ? 'Save changes' : 'Create brand'}
+          </button>
+          <button className="btn bg" type="button" onClick={onCancel}>Cancel</button>
+        </div>
+      </form>
     </>
   );
 }
