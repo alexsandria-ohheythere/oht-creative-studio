@@ -314,6 +314,49 @@ function BrandCenter({ brands, isCommand, content }) {
           </div>
         </div>
 
+        {/* Caption Playbook (machine-readable — feeds the Line-Up module) */}
+        {(() => {
+          const bb = open.brand_book || {};
+          const hasAny = bb.caption_structure || (bb.ctas || []).length || (bb.hashtags_primary || []).length || (bb.vocab_preferred || []).length;
+          const chipRow = (label, arr, color) => (
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text3)', marginBottom: 5 }}>{label}</div>
+              <div className="bmr">
+                {(arr || []).length === 0
+                  ? <span style={{ fontSize: 12, color: 'var(--text3)' }}>Not set</span>
+                  : arr.map((x, i) => <span className="tag" key={i} style={color ? { color } : {}}>{x}</span>)}
+              </div>
+            </div>
+          );
+          return (
+            <div className="card" style={{ marginBottom: 18 }}>
+              <div className="ch"><div className="ct">Caption Playbook</div><span style={{ fontSize: 11, color: 'var(--text3)' }}>feeds Line-Up</span></div>
+              <div className="cb">
+                {!hasAny && <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 10 }}>Not configured yet — click Edit to set caption structure, CTAs, hashtags & vocabulary.</div>}
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text3)', marginBottom: 3 }}>Caption Structure</div>
+                  <div style={{ fontSize: 13, color: bb.caption_structure ? 'var(--text)' : 'var(--text3)' }}>{bb.caption_structure || 'Not set'}</div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                  <div>
+                    {chipRow('Approved CTAs', bb.ctas, open.color)}
+                    {chipRow('Primary Hashtags', bb.hashtags_primary)}
+                    {chipRow('Preferred Words', bb.vocab_preferred, 'var(--green)')}
+                  </div>
+                  <div>
+                    {chipRow('Content Pillars', bb.content_pillars, open.color)}
+                    {chipRow('Secondary Hashtags', bb.hashtags_secondary)}
+                    {chipRow('Words to Avoid', bb.vocab_banned, '#ff6464')}
+                  </div>
+                </div>
+                {bb.emoji_rule && (
+                  <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text2)' }}><b>Emoji:</b> {bb.emoji_rule}</div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Voice + Style + Messaging */}
         <div className="dcols">
           <div className="card">
@@ -409,6 +452,7 @@ function BrandCenter({ brands, isCommand, content }) {
 function BrandForm({ brand, onDone, onCancel }) {
   const [state, formAction, pending] = useActionState(saveBrand, {});
   const [color, setColor] = useState(brand?.color || '#EE268C');
+  const bb = brand?.brand_book || {}; // existing playbook values, if any
 
   // When the save succeeds, return to the list.
   if (state?.ok) {
@@ -500,6 +544,62 @@ function BrandForm({ brand, onDone, onCancel }) {
             <label style={lbl}>Approved Messaging</label>
             <textarea style={{ ...inp, minHeight: 80, resize: 'vertical' }} name="messaging" defaultValue={(brand?.messaging || []).join('\n')} placeholder="One pillar per line (or comma-separated)" />
             <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 5 }}>One messaging pillar per line.</div>
+          </div>
+        </div>
+
+        {/* CAPTION PLAYBOOK — machine-readable fields the Line-Up module reads */}
+        <div className="card" style={{ padding: 22, marginTop: 16 }}>
+          <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Caption Playbook</div>
+          <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 18 }}>Structured data the Line-Up module uses to auto-build captions.</div>
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={lbl}>Caption Structure</label>
+            <input style={inp} name="caption_structure" defaultValue={bb.caption_structure || ''} placeholder="e.g. Hook → 1–2 line body → CTA → hashtags" />
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 5 }}>The shape every caption follows.</div>
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={lbl}>Content Pillars</label>
+            <input style={inp} name="content_pillars" defaultValue={(bb.content_pillars || []).join(', ')} placeholder="Education, Products, Community, Behind the Scenes" />
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 5 }}>Comma-separated.</div>
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={lbl}>Approved CTAs</label>
+            <textarea style={{ ...inp, minHeight: 70, resize: 'vertical' }} name="ctas" defaultValue={(bb.ctas || []).join('\n')} placeholder={'Visit us in BF Homes\nTry it this week\nDM us to reserve'} />
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 5 }}>One per line. The Line-Up picks from these.</div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+            <div>
+              <label style={lbl}>Primary Hashtags</label>
+              <textarea style={{ ...inp, minHeight: 70, resize: 'vertical' }} name="hashtags_primary" defaultValue={(bb.hashtags_primary || []).join('\n')} placeholder={'#ohheythere\n#matcha'} />
+            </div>
+            <div>
+              <label style={lbl}>Secondary Hashtags</label>
+              <textarea style={{ ...inp, minHeight: 70, resize: 'vertical' }} name="hashtags_secondary" defaultValue={(bb.hashtags_secondary || []).join('\n')} placeholder={'#bfhomes\n#cafehopping'} />
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={lbl}>Banned Hashtags</label>
+            <input style={inp} name="hashtags_banned" defaultValue={(bb.hashtags_banned || []).join(', ')} placeholder="Comma-separated tags to never use" />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+            <div>
+              <label style={lbl}>Preferred Vocabulary</label>
+              <textarea style={{ ...inp, minHeight: 70, resize: 'vertical' }} name="vocab_preferred" defaultValue={(bb.vocab_preferred || []).join('\n')} placeholder={'ceremonial\nwhisked\ncrafted'} />
+            </div>
+            <div>
+              <label style={lbl}>Words to Avoid</label>
+              <textarea style={{ ...inp, minHeight: 70, resize: 'vertical' }} name="vocab_banned" defaultValue={(bb.vocab_banned || []).join('\n')} placeholder={'cheap\nbest\nnumber one'} />
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 4 }}>
+            <label style={lbl}>Emoji Rule</label>
+            <input style={inp} name="emoji_rule" defaultValue={bb.emoji_rule || ''} placeholder="e.g. Sparingly — 1 max, never in headlines" />
           </div>
         </div>
 
