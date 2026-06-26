@@ -31,6 +31,21 @@ export async function saveBrand(prevState, formData) {
   const audience = (formData.get('audience') || '').trim();
   const personality = parseMessaging(formData.get('personality'));
 
+  // Caption Playbook — machine-readable structure the Line-Up module reads.
+  // Stored in the brand_book JSONB column so we never need a schema change
+  // to add more playbook fields later.
+  const brand_book = {
+    caption_structure: (formData.get('caption_structure') || '').trim(),
+    ctas: parseMessaging(formData.get('ctas')),
+    hashtags_primary: parseMessaging(formData.get('hashtags_primary')),
+    hashtags_secondary: parseMessaging(formData.get('hashtags_secondary')),
+    hashtags_banned: parseMessaging(formData.get('hashtags_banned')),
+    vocab_preferred: parseMessaging(formData.get('vocab_preferred')),
+    vocab_banned: parseMessaging(formData.get('vocab_banned')),
+    emoji_rule: (formData.get('emoji_rule') || '').trim(),
+    content_pillars: parseMessaging(formData.get('content_pillars')),
+  };
+
   if (!name) {
     return { error: 'Brand name is required.' };
   }
@@ -39,6 +54,7 @@ export async function saveBrand(prevState, formData) {
   const payload = {
     name, tagline, color, voice, style_guide, messaging,
     category, mission, positioning, audience, personality,
+    brand_book,
   };
 
   let error;
