@@ -87,3 +87,18 @@ export async function archiveBrand(prevState, formData) {
   revalidatePath('/dashboard');
   return { ok: true };
 }
+
+export async function deleteBrand(prevState, formData) {
+  const id = formData.get('id');
+  if (!id) return { error: 'Missing brand id.' };
+
+  const supabase = await createClient();
+  // Permanent delete. Dependent rows (content, assets, members) cascade
+  // via the schema's ON DELETE CASCADE foreign keys.
+  const { error } = await supabase.from('brands').delete().eq('id', id);
+
+  if (error) return { error: error.message };
+
+  revalidatePath('/dashboard');
+  return { ok: true, deleted: true };
+}
