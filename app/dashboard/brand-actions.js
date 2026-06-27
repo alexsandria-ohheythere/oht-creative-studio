@@ -6,6 +6,15 @@ import { createClient } from '../../lib/supabase-server';
 // All writes go through the server with the user's session.
 // RLS ("command writes brands") enforces that only command users can write.
 
+function safeJson(raw, fallback) {
+  try {
+    const v = JSON.parse(raw);
+    return v ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function parseMessaging(raw) {
   // Accept newline- or comma-separated pillars, trim blanks.
   if (!raw) return [];
@@ -47,7 +56,6 @@ export async function saveBrand(prevState, formData) {
 
     // Icon
     icon_url: (formData.get('icon_url') || '').trim(),
-
     // Identity (extended)
     brand_story: (formData.get('brand_story') || '').trim(),
     competitive_landscape: (formData.get('competitive_landscape') || '').trim(),
@@ -72,6 +80,10 @@ export async function saveBrand(prevState, formData) {
     // Legal + AI
     legal_compliance: (formData.get('legal_compliance') || '').trim(),
     ai_prompts: (formData.get('ai_prompts') || '').trim(),
+
+    // Palette (object of slot→hex) and Gallery (array of {url, caption})
+    palette: safeJson(formData.get('palette'), {}),
+    gallery: safeJson(formData.get('gallery'), []),
   };
 
   if (!name) {
