@@ -44,6 +44,34 @@ export async function saveBrand(prevState, formData) {
     vocab_banned: parseMessaging(formData.get('vocab_banned')),
     emoji_rule: (formData.get('emoji_rule') || '').trim(),
     content_pillars: parseMessaging(formData.get('content_pillars')),
+
+    // Icon
+    icon_url: (formData.get('icon_url') || '').trim(),
+
+    // Identity (extended)
+    brand_story: (formData.get('brand_story') || '').trim(),
+    competitive_landscape: (formData.get('competitive_landscape') || '').trim(),
+    customer_personas: (formData.get('customer_personas') || '').trim(),
+
+    // Visual
+    logo_rules: (formData.get('logo_rules') || '').trim(),
+    typography: (formData.get('typography') || '').trim(),
+    photo_direction: (formData.get('photo_direction') || '').trim(),
+    video_direction: (formData.get('video_direction') || '').trim(),
+    packaging: (formData.get('packaging') || '').trim(),
+
+    // Content
+    social_rules: (formData.get('social_rules') || '').trim(),
+    community_guidelines: (formData.get('community_guidelines') || '').trim(),
+    dos_donts: (formData.get('dos_donts') || '').trim(),
+    vocab_dictionary: (formData.get('vocab_dictionary') || '').trim(),
+    faqs: (formData.get('faqs') || '').trim(),
+    seasonal_calendar: (formData.get('seasonal_calendar') || '').trim(),
+    campaign_history: (formData.get('campaign_history') || '').trim(),
+
+    // Legal + AI
+    legal_compliance: (formData.get('legal_compliance') || '').trim(),
+    ai_prompts: (formData.get('ai_prompts') || '').trim(),
   };
 
   if (!name) {
