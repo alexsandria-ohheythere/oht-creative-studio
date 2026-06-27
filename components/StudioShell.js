@@ -21,17 +21,16 @@ export default function StudioShell({ profile, email, content, brands = [] }) {
   const visibleNav = NAV.filter((n) => n.roles.includes(role));
   const [active, setActive] = useState('dash');
   const [drawer, setDrawer] = useState(false);
+  const [openGroups, setOpenGroups] = useState({}); // expandable sub-nav
 
   const sections = [...new Set(visibleNav.map((n) => n.section))];
   const isCommand = role === 'command';
 
-  // Brand color lookup: prefer live DB brands, fall back to config map.
   const brandColor = (name) => {
     const b = brands.find((x) => x.name === name);
     return (b && b.color) || BRAND_COLOR[name] || '#9494AA';
   };
 
-  // content is already scoped by RLS; this is just for display grouping
   const byStatus = (s) => content.filter((c) => c.status === s);
   const pendingCount = content.filter((c) => ['submitted', 'changes'].includes(c.status)).length;
 
@@ -39,14 +38,31 @@ export default function StudioShell({ profile, email, content, brands = [] }) {
     setActive(id);
     setDrawer(false);
   }
+  function toggleGroup(id, e) {
+    e.stopPropagation();
+    setOpenGroups((g) => ({ ...g, [id]: !g[id] }));
+  }
 
-  const navColorClass = { cont: 'g', pub: 'b', anly: 'y' };
+  // Resolve which panel renders for the active id.
+  // Parent ids and their sub-ids map to the same underlying panel,
+  // with the sub-view passed through so the panel can focus a tab.
+  const parentId = active.includes('.') ? active.split('.')[0] : active;
+  const subView = active.includes('.') ? active.split('.')[1] : null;
+
+  const activeLabel = (() => {
+    for (const n of NAV) {
+      if (n.id === active) return n.label;
+      const child = (n.children || []).find((c) => c.id === active);
+      if (child) return `${n.label} · ${child.label}`;
+    }
+    return 'Dashboard';
+  })();
 
   return (
     <>
       <div className="mtop">
         <div className="mtop-burger" onClick={() => setDrawer((d) => !d)}>☰</div>
-        <div className="mtop-name">{NAV.find((n) => n.id === active)?.label}</div>
+        <div className="mtop-name">{activeLabel}</div>
         <form action="/auth/signout" method="post">
           <button className="btn bg bsm" type="submit">Sign out</button>
         </form>
@@ -65,16 +81,38 @@ export default function StudioShell({ profile, email, content, brands = [] }) {
             <div className="sb-sec" key={sec}>
               <div className="sb-label">{sec}</div>
               {visibleNav.filter((n) => n.section === sec).map((n) => {
-                const on = active === n.id;
-                const cls = on ? `ni on ${navColorClass[n.id] || ''}` : 'ni';
+                const on = parentId === n.id;
+                const hasKids = (n.children || []).length > 0;
+                const expanded = openGroups[n.id] ?? on;
                 return (
-                  <div className={cls} key={n.id} onClick={() => go(n.id)}>
-                    <span className="ni-ic">{n.icon}</span> {n.label}
-                    {n.pill && <span className="ni-pill">{n.pill}</span>}
-                    {n.id === 'appr' && pendingCount > 0 && (
-                      <span className="ni-pill" style={{ background: 'rgba(255,187,68,.15)', color: '#ffbb44', borderColor: 'rgba(255,187,68,.3)' }}>
-                        {pendingCount}
-                      </span>
+                  <div key={n.id}>
+                    <div
+                      className={`ni ${on ? 'on' : ''} ${n.flagship ? 'flagship' : ''}`}
+                      style={on && n.accent ? { boxShadow: `inset 3px 0 0 ${n.accent}` } : {}}
+                      onClick={() => go(hasKids ? (n.children[0].id) : n.id)}
+                    >
+                      <span className="ni-ic" style={n.accent ? { color: n.accent } : {}}>{n.icon}</span> {n.label}
+                      {n.pill && <span className="ni-pill">{n.pill}</span>}
+                      {n.id === 'camp' && <span className="ni-pill">4</span>}
+                      {hasKids && (
+                        <span className="ni-caret" onClick={(e) => toggleGroup(n.id, e)}>
+                          {expanded ? '▾' : '▸'}
+                        </span>
+                      )}
+                    </div>
+                    {hasKids && expanded && (
+                      <div className="ni-kids">
+                        {n.children.map((c) => (
+                          <div
+                            key={c.id}
+                            className={`ni-kid ${active === c.id ? 'on' : ''} ${c.soon ? 'soon' : ''}`}
+                            onClick={() => go(c.id)}
+                          >
+                            {c.label}
+                            {c.soon && <span className="kid-soon">soon</span>}
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
                 );
@@ -102,52 +140,109 @@ export default function StudioShell({ profile, email, content, brands = [] }) {
 
         <main className="main">
           <div className="topbar">
-            <div className="tb-title">{NAV.find((n) => n.id === active)?.label}</div>
+            <div className="tb-title">{activeLabel}</div>
             <div className="tb-search"><span>⌕</span><span>Search everything…</span><span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text3)', border: '1px solid var(--border)', padding: '1px 5px', borderRadius: 3 }}>⌘K</span></div>
             <div className="tb-acts">
               {isCommand && <button className="btn bg">⊕ New Asset</button>}
-              <button className="btn bl">✦ Ask the OS</button>
+              <button className="btn bl" onClick={() => go('strategist')}>✦ Ask the OS</button>
             </div>
           </div>
 
           <div className="content">
-            {active === 'dash' && (
+            {parentId === 'dash' && (
               <Dashboard profile={profile} content={content} isCommand={isCommand} pendingCount={pendingCount} />
             )}
 
-            {active === 'appr' && (
-              <Approvals
-                content={content}
-                role={role}
-                brandScope={profile.brand_scope}
-                byStatus={byStatus}
-                brandColor={brandColor}
-              />
-            )}
-
-            {active === 'brand' && (
+            {parentId === 'brain' && (
               <BrandCenter brands={brands} isCommand={isCommand} content={content} />
             )}
 
-            {active === 'cont' && (
-              <ContentCenter content={content} brands={brands} brandColor={brandColor} />
+            {parentId === 'camp' && (
+              <Campaigns isCommand={isCommand} />
             )}
 
-            {active === 'pub' && (
-              <PublishingCenter content={content} brands={brands} brandColor={brandColor} />
+            {parentId === 'content' && (
+              <ContentCenter content={content} brands={brands} brandColor={brandColor} subView={subView} />
             )}
 
-            {active === 'anly' && (
-              <AnalyticsCenter content={content} brands={brands} brandColor={brandColor} />
+            {parentId === 'publishing' && (
+              <PublishingCenter content={content} brands={brands} brandColor={brandColor} subView={subView} />
             )}
 
-            {!['dash', 'appr', 'brand', 'cont', 'pub', 'anly'].includes(active) && (
-              <Stub label={NAV.find((n) => n.id === active)?.label} />
+            {parentId === 'insights' && (
+              <AnalyticsCenter content={content} brands={brands} brandColor={brandColor} subView={subView} />
+            )}
+
+            {parentId === 'strategist' && (
+              <Strategist content={content} brands={brands} />
             )}
           </div>
         </main>
       </div>
     </>
+  );
+}
+
+// =====================================================================
+// CAMPAIGNS — groups content into initiatives (next build)
+// =====================================================================
+function Campaigns({ isCommand }) {
+  return (
+    <>
+      <div className="ph">
+        <div>
+          <div className="pt">Campaigns</div>
+          <div className="ps">Every marketing initiative, with its own goal and timeline</div>
+        </div>
+        {isCommand && <button className="btn bl">＋ New Campaign</button>}
+      </div>
+      <ComingSoon
+        icon="◇"
+        title="Campaign Manager"
+        body="Group content into campaigns with goals, dates, and brands. Ties Content, Publishing, and Insights together so you can see how a whole initiative performed — not just single posts."
+      />
+    </>
+  );
+}
+
+// =====================================================================
+// AI STRATEGIST — reads everything, recommends what to make next
+// =====================================================================
+function Strategist({ content, brands }) {
+  return (
+    <>
+      <div className="ph">
+        <div>
+          <div className="pt">AI Strategist</div>
+          <div className="ps">Learns from Brand Brain, Content, and Insights to recommend what to create next</div>
+        </div>
+      </div>
+      <div className="intel" style={{ marginBottom: 18 }}>
+        <div className="intel-ic">✦</div>
+        <div style={{ flex: 1 }}>
+          <div className="intel-lbl">How this works</div>
+          <div className="intel-q">The Strategist reads your real data — it doesn&apos;t guess.</div>
+          <div className="intel-s">Once Brand Brain, Content, and Insights have data flowing, it will combine voice + performance + audience to suggest your next moves per brand.</div>
+        </div>
+      </div>
+      <ComingSoon
+        icon="✦"
+        title="Ask the OS"
+        body={`Reads across ${brands.length} brands and ${content.length} content items. Recommendations unlock as your Insights data grows — built last on purpose, so it has something real to learn from.`}
+      />
+    </>
+  );
+}
+
+// Reusable "next build" panel — styled, honest about state.
+function ComingSoon({ icon, title, body }) {
+  return (
+    <div className="soon-card">
+      <div className="soon-ic">{icon}</div>
+      <div className="soon-t">{title}</div>
+      <div className="soon-b">{body}</div>
+      <div className="soon-tag">Coming in next build</div>
+    </div>
   );
 }
 
@@ -623,7 +718,7 @@ function BrandForm({ brand, onDone, onCancel }) {
 // =====================================================================
 // CONTENT CENTER — visual planning: board / table views, team & cadence
 // =====================================================================
-function ContentCenter({ content, brands, brandColor }) {
+function ContentCenter({ content, brands, brandColor, subView }) {
   const [brandFilter, setBrandFilter] = useState('all');
   const STAT = {
     briefed: { c: 's-dr', label: 'Briefed' },
@@ -692,7 +787,7 @@ function ContentCenter({ content, brands, brandColor }) {
 // =====================================================================
 // PUBLISHING CENTER — calendar of scheduled content across channels
 // =====================================================================
-function PublishingCenter({ content, brands, brandColor }) {
+function PublishingCenter({ content, brands, brandColor, subView }) {
   const now = new Date();
   const [view, setView] = useState('month');
   const year = now.getFullYear();
@@ -790,7 +885,7 @@ function PublishingCenter({ content, brands, brandColor }) {
 // =====================================================================
 // ANALYTICS CENTER — reach, engagement, CTR, conversion, revenue + recs
 // =====================================================================
-function AnalyticsCenter({ content, brands, brandColor }) {
+function AnalyticsCenter({ content, brands, brandColor, subView }) {
   const sum = (k) => content.reduce((a, c) => a + (Number(c[k]) || 0), 0);
   const totalReach = sum('reach');
   const totalEng = sum('engagement');
