@@ -46,7 +46,7 @@ export async function middleware(request) {
   //  brand or show a chooser when the user has several).
   if (user && path === '/login') {
     const url = request.nextUrl.clone();
-    url.pathname = '/';
+    url.pathname = '/dashboard';
     return NextResponse.redirect(url);
   }
 
