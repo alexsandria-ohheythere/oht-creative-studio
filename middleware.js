@@ -41,10 +41,12 @@ export async function middleware(request) {
     return NextResponse.redirect(url);
   }
 
-  // Logged in and sitting on login/landing → send to dashboard
-  if (user && isAuthPage) {
+  // Logged in and sitting on login/landing → send to the brand picker at "/"
+  // (the / page resolves which brand to open; it can auto-forward to a single
+  //  brand or show a chooser when the user has several).
+  if (user && path === '/login') {
     const url = request.nextUrl.clone();
-    url.pathname = '/dashboard';
+    url.pathname = '/';
     return NextResponse.redirect(url);
   }
 
