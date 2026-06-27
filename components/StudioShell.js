@@ -2,7 +2,7 @@
 
 import { useState, useActionState } from 'react';
 import appConfig from '../config/app.json';
-import { saveBrand, archiveBrand } from '../app/dashboard/brand-actions';
+import { saveBrand, archiveBrand, deleteBrand } from '../app/dashboard/brand-actions';
 
 // Access model:
 //  - role 'command'   → full access (Alex, CJ)
@@ -358,6 +358,14 @@ function BrandCenter({ brands, isCommand, content }) {
   function openEdit(brand) { setEditing(brand); setView('form'); }
   function backToList() { setView('list'); setOpenId(null); setEditing(null); }
 
+  const [confirmDel, setConfirmDel] = useState(false);
+  const [delState, deleteAction, deleting] = useActionState(deleteBrand, {});
+  // After a successful delete, drop back to the list.
+  if (delState && delState.deleted && view === 'detail') {
+    setConfirmDel(false);
+    backToList();
+  }
+
   // ----- FORM MODE -----
   if (view === 'form') {
     return <BrandForm brand={editing} onDone={backToList} onCancel={backToList} />;
@@ -381,6 +389,22 @@ function BrandCenter({ brands, isCommand, content }) {
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             {isCommand && <button className="btn bg" onClick={() => openEdit(open)}>✎ Edit</button>}
+            {isCommand && !confirmDel && (
+              <button className="btn bg" style={{ color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }} onClick={() => setConfirmDel(true)}>🗑 Delete</button>
+            )}
+            {isCommand && confirmDel && (
+              <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                <span style={{ fontSize: 12, color: '#ff6464' }}>Delete permanently?</span>
+                <form action={deleteAction} style={{ display: 'inline' }}>
+                  <input type="hidden" name="id" value={open.id} />
+                  <button className="btn" type="submit" disabled={deleting}
+                    style={{ background: '#ff6464', color: '#111', borderColor: '#ff6464' }}>
+                    {deleting ? 'Deleting…' : 'Yes, delete'}
+                  </button>
+                </form>
+                <button className="btn bg" onClick={() => setConfirmDel(false)}>Cancel</button>
+              </span>
+            )}
             <button className="btn bg" onClick={backToList}>← All brands</button>
           </div>
         </div>
