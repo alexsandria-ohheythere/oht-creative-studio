@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useActionState } from 'react';
+import { useState, useEffect, useActionState } from 'react';
 import appConfig from '../config/app.json';
 import { saveBrand, archiveBrand, deleteBrand } from '../app/dashboard/brand-actions';
 
@@ -360,11 +360,15 @@ function BrandCenter({ brands, isCommand, content }) {
 
   const [confirmDel, setConfirmDel] = useState(false);
   const [delState, deleteAction, deleting] = useActionState(deleteBrand, {});
-  // After a successful delete, drop back to the list.
-  if (delState && delState.deleted && view === 'detail') {
-    setConfirmDel(false);
-    backToList();
-  }
+  // After a successful delete, drop back to the list — once, not on every render.
+  useEffect(() => {
+    if (delState && delState.deleted) {
+      setConfirmDel(false);
+      setView('list');
+      setOpenId(null);
+      setEditing(null);
+    }
+  }, [delState]);
 
   // ----- FORM MODE -----
   if (view === 'form') {
