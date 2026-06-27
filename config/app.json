@@ -1,13 +1,36 @@
 {
   "nav": [
     { "id": "dash", "label": "Dashboard", "icon": "⊞", "section": "Overview", "roles": ["command", "freelance"] },
-    { "id": "brand", "label": "Brand Center", "icon": "◈", "section": "Centers", "roles": ["command", "freelance"] },
-    { "id": "cont", "label": "Content Center", "icon": "▣", "section": "Centers", "roles": ["command", "freelance"] },
-    { "id": "pub", "label": "Publishing Center", "icon": "⊛", "section": "Centers", "roles": ["command"] },
-    { "id": "anly", "label": "Analytics Center", "icon": "◉", "section": "Centers", "roles": ["command"] },
-    { "id": "camp", "label": "Campaigns", "icon": "◇", "section": "Workspace", "roles": ["command"], "pill": "5" },
-    { "id": "asst", "label": "Asset Library", "icon": "◻", "section": "Workspace", "roles": ["command", "freelance"] },
-    { "id": "appr", "label": "Approvals", "icon": "◌", "section": "Workspace", "roles": ["command", "freelance"] }
+
+    { "id": "brain", "label": "Brand Brain", "icon": "◈", "section": "Creative OS", "roles": ["command", "freelance"], "accent": "#EE268C" },
+
+    { "id": "camp", "label": "Campaigns", "icon": "◇", "section": "Creative OS", "roles": ["command"], "accent": "#FFAEF1" },
+
+    { "id": "content", "label": "Content", "icon": "▣", "section": "Creative OS", "roles": ["command", "freelance"], "accent": "#64BC46",
+      "children": [
+        { "id": "content.ideas", "label": "Ideas" },
+        { "id": "content.briefs", "label": "Briefs" },
+        { "id": "content.production", "label": "Production" },
+        { "id": "content.assets", "label": "Assets" }
+      ]
+    },
+
+    { "id": "publishing", "label": "Publishing", "icon": "⊛", "section": "Creative OS", "roles": ["command"], "accent": "#AED8FF",
+      "children": [
+        { "id": "publishing.calendar", "label": "Calendar" },
+        { "id": "publishing.channels", "label": "Channels" }
+      ]
+    },
+
+    { "id": "insights", "label": "Insights", "icon": "◉", "section": "Creative OS", "roles": ["command"], "accent": "#DDEE26",
+      "children": [
+        { "id": "insights.performance", "label": "Performance" },
+        { "id": "insights.audience", "label": "Audience" },
+        { "id": "insights.competitors", "label": "Competitors", "soon": true }
+      ]
+    },
+
+    { "id": "strategist", "label": "AI Strategist", "icon": "✦", "section": "Creative OS", "roles": ["command"], "accent": "#DDEE26", "flagship": true }
   ],
   "statuses": [
     { "id": "briefed", "label": "Briefed", "color": "#9494AA" },
