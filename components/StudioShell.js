@@ -443,6 +443,50 @@ function BrandCenter({ brands, isCommand, content }) {
           </div>
         </div>
 
+        {/* Palette + Gallery (visual references) */}
+        {(() => {
+          const bb = open.brand_book || {};
+          const pal = bb.palette || {};
+          const palEntries = Object.entries(pal).filter(([, v]) => v);
+          const gal = bb.gallery || [];
+          if (palEntries.length === 0 && gal.length === 0) return null;
+          const labelFor = (k) => k === 'black' ? 'Black' : k === 'white' ? 'White' : k.toUpperCase();
+          return (
+            <div className="card" style={{ marginBottom: 18 }}>
+              <div className="ch"><div className="ct">Palette & References</div></div>
+              <div className="cb">
+                {palEntries.length > 0 && (
+                  <div style={{ marginBottom: gal.length ? 18 : 0 }}>
+                    <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text3)', marginBottom: 8 }}>Color Palette</div>
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                      {palEntries.map(([k, v]) => (
+                        <div key={k} style={{ textAlign: 'center' }}>
+                          <div style={{ width: 46, height: 46, borderRadius: 10, background: v, border: '1px solid var(--border)' }} />
+                          <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 4, fontFamily: 'monospace' }}>{v}</div>
+                          <div style={{ fontSize: 9, color: 'var(--text3)' }}>{labelFor(k)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {gal.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text3)', marginBottom: 8 }}>Reference Gallery</div>
+                    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                      {gal.map((g, i) => (
+                        <div key={i} style={{ width: 150 }}>
+                          <div style={{ width: 150, height: 110, borderRadius: 10, background: `center/cover no-repeat url(${g.url})`, border: '1px solid var(--border)' }} />
+                          {g.caption && <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 5 }}>{g.caption}</div>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Extended brand profile sections (from brand_book) */}
         {(() => {
           const bb = open.brand_book || {};
@@ -638,6 +682,23 @@ function BrandForm({ brand, onDone, onCancel }) {
   const [iconUrl, setIconUrl] = useState(brand?.brand_book?.icon_url || '');
   const [uploading, setUploading] = useState(false);
   const [uploadErr, setUploadErr] = useState('');
+  // Palette: 10 optional slots — 4 primary, 4 secondary, black, white.
+  const PALETTE_SLOTS = [
+    { key: 'p1', group: 'Primary' }, { key: 'p2', group: 'Primary' },
+    { key: 'p3', group: 'Primary' }, { key: 'p4', group: 'Primary' },
+    { key: 's1', group: 'Secondary' }, { key: 's2', group: 'Secondary' },
+    { key: 's3', group: 'Secondary' }, { key: 's4', group: 'Secondary' },
+    { key: 'black', group: 'Base' }, { key: 'white', group: 'Base' },
+  ];
+  const [paletteVals, setPaletteVals] = useState(() => {
+    const saved = brand?.brand_book?.palette || {};
+    return PALETTE_SLOTS.reduce((acc, s) => {
+      acc[s.key] = saved[s.key] || '';
+      return acc;
+    }, {});
+  });
+  const [gallery, setGallery] = useState(() => brand?.brand_book?.gallery || []);
+  const [galleryUploading, setGalleryUploading] = useState(false);
   const bb = brand?.brand_book || {};
 
   useEffect(() => { if (state?.ok) setTimeout(onDone, 0); }, [state]);
@@ -674,6 +735,39 @@ function BrandForm({ brand, onDone, onCancel }) {
     }
   }
 
+  async function handleGallery(e) {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    setUploadErr(''); setGalleryUploading(true);
+    try {
+      const supabase = createBrowserClient();
+      const added = [];
+      for (const file of files) {
+        const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+        const path = `${(brand?.id || 'new')}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`;
+        const { error } = await supabase.storage.from('brand-gallery').upload(path, file, { upsert: true });
+        if (error) throw error;
+        const { data } = supabase.storage.from('brand-gallery').getPublicUrl(path);
+        added.push({ url: data.publicUrl, caption: '' });
+      }
+      setGallery((g) => [...g, ...added]);
+    } catch (err) {
+      setUploadErr(err.message || 'Gallery upload failed.');
+    } finally {
+      setGalleryUploading(false);
+    }
+  }
+
+  function removeGalleryItem(i) {
+    setGallery((g) => g.filter((_, idx) => idx !== i));
+  }
+  function setGalleryCaption(i, val) {
+    setGallery((g) => g.map((item, idx) => (idx === i ? { ...item, caption: val } : item)));
+  }
+  function setSlot(key, val) {
+    setPaletteVals((p) => ({ ...p, [key]: val }));
+  }
+
   const TABS = [
     ['identity', 'Identity'],
     ['visual', 'Visual'],
@@ -696,6 +790,8 @@ function BrandForm({ brand, onDone, onCancel }) {
         {brand?.id && <input type="hidden" name="id" value={brand.id} />}
         <input type="hidden" name="color" value={color} />
         <input type="hidden" name="icon_url" value={iconUrl} />
+        <input type="hidden" name="palette" value={JSON.stringify(paletteVals)} />
+        <input type="hidden" name="gallery" value={JSON.stringify(gallery)} />
 
         {/* ICON + NAME header card (always visible) */}
         <div className="card" style={{ padding: 22, marginBottom: 16, display: 'flex', gap: 18, alignItems: 'center' }}>
@@ -743,22 +839,77 @@ function BrandForm({ brand, onDone, onCancel }) {
         {/* ---------------- VISUAL ---------------- */}
         {tab === 'visual' && (
           <div className="card" style={{ padding: 22 }}>
-            <Field label="Brand Color">
+            <Field label="Primary Brand Color" sub="Used for accents across the app.">
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                {palette.map((c) => (
+                {['#EE268C', '#64BC46', '#AED8FF', '#FFAEF1', '#DDEE26'].map((c) => (
                   <div key={c} onClick={() => setColor(c)} style={{ width: 28, height: 28, borderRadius: 6, background: c, cursor: 'pointer', border: color === c ? '2px solid var(--text)' : '2px solid transparent' }} />
                 ))}
                 <input type="color" value={color} onChange={(e) => setColor(e.target.value)} style={{ width: 36, height: 28, background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }} />
                 <span style={{ fontSize: 12, color: 'var(--text3)' }}>{color}</span>
               </div>
             </Field>
+
+            {/* FULL PALETTE — 10 optional slots */}
+            <div style={{ marginBottom: 20 }}>
+              <label style={lbl}>Color Palette</label>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 12 }}>Tap a swatch to set its hex. Leave any blank if unused.</div>
+              {['Primary', 'Secondary', 'Base'].map((group) => (
+                <div key={group} style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--text3)', marginBottom: 8 }}>{group}</div>
+                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                    {PALETTE_SLOTS.filter((s) => s.group === group).map((s) => {
+                      const val = paletteVals[s.key];
+                      const label = s.key === 'black' ? 'Black' : s.key === 'white' ? 'White' : '';
+                      return (
+                        <div key={s.key} style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center' }}>
+                          <label style={{ cursor: 'pointer', position: 'relative' }}>
+                            <div style={{ width: 46, height: 46, borderRadius: 10, background: val || 'transparent', border: val ? '1px solid var(--border)' : '1.5px dashed var(--border)', display: 'grid', placeItems: 'center', color: 'var(--text3)', fontSize: 18 }}>
+                              {!val && '+'}
+                            </div>
+                            <input type="color" value={val || '#000000'} onChange={(e) => setSlot(s.key, e.target.value)} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }} />
+                          </label>
+                          <input
+                            value={val}
+                            onChange={(e) => setSlot(s.key, e.target.value)}
+                            placeholder={label || '#hex'}
+                            style={{ width: 72, fontSize: 11, textAlign: 'center', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 6px', color: 'var(--text)', fontFamily: 'monospace' }}
+                          />
+                          {val && <span onClick={() => setSlot(s.key, '')} style={{ fontSize: 10, color: 'var(--text3)', cursor: 'pointer' }}>clear</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+
             <Field label="Style Guidelines"><textarea style={ta(90)} name="style_guide" defaultValue={brand?.style_guide || ''} placeholder="Visual rules — colors, type, imagery, do’s and don’ts." /></Field>
             <Field label="Logo Rules" sub="Clear space, minimum size, what not to do."><textarea style={ta(80)} name="logo_rules" defaultValue={bb.logo_rules || ''} placeholder="How the logo should and shouldn't be used." /></Field>
             <Field label="Typography" sub="Fonts, weights, hierarchy."><textarea style={ta(80)} name="typography" defaultValue={bb.typography || ''} placeholder="Headline font, body font, when to use each." /></Field>
             <Field label="Photography Direction"><textarea style={ta(80)} name="photo_direction" defaultValue={bb.photo_direction || ''} placeholder="Lighting, mood, composition, color grading." /></Field>
             <Field label="Video Direction"><textarea style={ta(80)} name="video_direction" defaultValue={bb.video_direction || ''} placeholder="Pacing, music, captions, format per platform." /></Field>
             <Field label="Visual & Packaging Notes"><textarea style={ta(80)} name="packaging" defaultValue={bb.packaging || ''} placeholder="Cup design, labels, stickers, print standards." /></Field>
-            <div style={{ ...hint, borderTop: '1px solid var(--border)', paddingTop: 12, marginTop: 4 }}>📁 <strong>Visual Library</strong> (uploaded logo files, templates) is a file module coming in a later build.</div>
+
+            {/* REFERENCE GALLERY */}
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, marginTop: 4 }}>
+              <label style={lbl}>Reference Gallery</label>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 12 }}>Upload example photos that show the look — moodboard, product shots, do/don't examples.</div>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+                {gallery.map((g, i) => (
+                  <div key={i} style={{ width: 130 }}>
+                    <div style={{ position: 'relative' }}>
+                      <div style={{ width: 130, height: 100, borderRadius: 10, background: `center/cover no-repeat url(${g.url})`, border: '1px solid var(--border)' }} />
+                      <button type="button" onClick={() => removeGalleryItem(i)} style={{ position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: '50%', background: 'rgba(0,0,0,.6)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 12 }}>×</button>
+                    </div>
+                    <input value={g.caption} onChange={(e) => setGalleryCaption(i, e.target.value)} placeholder="Caption (optional)" style={{ width: '100%', marginTop: 5, fontSize: 11, background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 6px', color: 'var(--text)' }} />
+                  </div>
+                ))}
+                <label className="btn bg" style={{ cursor: 'pointer', width: 130, height: 100, display: 'grid', placeItems: 'center', borderStyle: 'dashed' }}>
+                  {galleryUploading ? 'Uploading…' : '＋ Add photos'}
+                  <input type="file" accept="image/*" multiple onChange={handleGallery} style={{ display: 'none' }} />
+                </label>
+              </div>
+            </div>
           </div>
         )}
 
