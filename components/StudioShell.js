@@ -3,6 +3,7 @@
 import { useState, useEffect, useActionState } from 'react';
 import appConfig from '../config/app.json';
 import { saveBrand, archiveBrand, deleteBrand } from '../app/dashboard/brand-actions';
+import { createClient as createBrowserClient } from '../lib/supabase-browser';
 
 // Access model:
 //  - role 'command'   → full access (Alex, CJ)
@@ -387,9 +388,14 @@ function BrandCenter({ brands, isCommand, content }) {
     return (
       <>
         <div className="ph">
-          <div>
-            <div className="pt" style={{ color: open.color }}>{open.name}</div>
-            <div className="ps">{open.tagline}{open.category ? ` · ${open.category}` : ''}</div>
+          <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+            <div style={{ width: 52, height: 52, borderRadius: 13, flex: '0 0 52px', overflow: 'hidden', background: open.brand_book?.icon_url ? `center/cover no-repeat url(${open.brand_book.icon_url})` : open.color + '22', color: open.color, display: 'grid', placeItems: 'center', fontSize: 16, fontWeight: 700 }}>
+              {!open.brand_book?.icon_url && (open.name || '?').slice(0, 2).toUpperCase()}
+            </div>
+            <div>
+              <div className="pt" style={{ color: open.color }}>{open.name}</div>
+              <div className="ps">{open.tagline}{open.category ? ` · ${open.category}` : ''}</div>
+            </div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             {isCommand && <button className="btn bg" onClick={() => openEdit(open)}>✎ Edit</button>}
@@ -436,6 +442,59 @@ function BrandCenter({ brands, isCommand, content }) {
             </div>
           </div>
         </div>
+
+        {/* Extended brand profile sections (from brand_book) */}
+        {(() => {
+          const bb = open.brand_book || {};
+          const sec = (label, value) => {
+            if (!value) return null;
+            return (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text3)', marginBottom: 4 }}>{label}</div>
+                <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{value}</div>
+              </div>
+            );
+          };
+          const groups = [
+            ['Identity & Strategy', [
+              ['Brand Story', bb.brand_story],
+              ['Competitive Landscape', bb.competitive_landscape],
+              ['Customer Personas', bb.customer_personas],
+            ]],
+            ['Visual', [
+              ['Logo Rules', bb.logo_rules],
+              ['Typography', bb.typography],
+              ['Photography Direction', bb.photo_direction],
+              ['Video Direction', bb.video_direction],
+              ['Visual & Packaging', bb.packaging],
+            ]],
+            ['Content & Community', [
+              ['Social Media Rules', bb.social_rules],
+              ['Comment & Community Guidelines', bb.community_guidelines],
+              ["Do's & Don'ts", bb.dos_donts],
+              ['Vocabulary Dictionary', bb.vocab_dictionary],
+              ['FAQs', bb.faqs],
+              ['Seasonal Calendar', bb.seasonal_calendar],
+              ['Campaign History', bb.campaign_history],
+            ]],
+            ['Legal & Compliance', [
+              ['Legal Claims & Compliance', bb.legal_compliance],
+            ]],
+            ['AI', [
+              ['AI Prompt Examples', bb.ai_prompts],
+            ]],
+          ];
+          return groups.map(([title, rows]) => {
+            const visible = rows.filter(([, v]) => v && v.trim());
+            if (visible.length === 0) return null;
+            return (
+              <div className="card" style={{ marginBottom: 18 }} key={title}>
+                <div className="ch"><div className="ct">{title}</div></div>
+                <div className="cb">{visible.map(([l, v]) => sec(l, v))}</div>
+              </div>
+            );
+          });
+        })()}
 
         {/* Caption Playbook (machine-readable — feeds the Line-Up module) */}
         {(() => {
@@ -575,177 +634,201 @@ function BrandCenter({ brands, isCommand, content }) {
 function BrandForm({ brand, onDone, onCancel }) {
   const [state, formAction, pending] = useActionState(saveBrand, {});
   const [color, setColor] = useState(brand?.color || '#EE268C');
-  const bb = brand?.brand_book || {}; // existing playbook values, if any
+  const [tab, setTab] = useState('identity');
+  const [iconUrl, setIconUrl] = useState(brand?.brand_book?.icon_url || '');
+  const [uploading, setUploading] = useState(false);
+  const [uploadErr, setUploadErr] = useState('');
+  const bb = brand?.brand_book || {};
 
-  // When the save succeeds, return to the list.
-  if (state?.ok) {
-    // schedule the transition out of render
-    setTimeout(onDone, 0);
-  }
+  useEffect(() => { if (state?.ok) setTimeout(onDone, 0); }, [state]);
 
   const palette = ['#EE268C', '#64BC46', '#AED8FF', '#FFAEF1', '#DDEE26'];
   const lbl = { fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text3)', marginBottom: 6, display: 'block' };
   const inp = { width: '100%', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--rs)', padding: '9px 12px', color: 'var(--text)', fontSize: 13, fontFamily: "'Inter',sans-serif" };
+  const ta = (h = 80) => ({ ...inp, minHeight: h, resize: 'vertical' });
+  const hint = { fontSize: 11, color: 'var(--text3)', marginTop: 5 };
+  const Field = ({ label, children, sub }) => (
+    <div style={{ marginBottom: 16 }}>
+      <label style={lbl}>{label}</label>
+      {children}
+      {sub && <div style={hint}>{sub}</div>}
+    </div>
+  );
+
+  async function handleIcon(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadErr(''); setUploading(true);
+    try {
+      const supabase = createBrowserClient();
+      const ext = (file.name.split('.').pop() || 'png').toLowerCase();
+      const path = `${(brand?.id || 'new')}-${Date.now()}.${ext}`;
+      const { error } = await supabase.storage.from('brand-icons').upload(path, file, { upsert: true });
+      if (error) throw error;
+      const { data } = supabase.storage.from('brand-icons').getPublicUrl(path);
+      setIconUrl(data.publicUrl);
+    } catch (err) {
+      setUploadErr(err.message || 'Upload failed.');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  const TABS = [
+    ['identity', 'Identity'],
+    ['visual', 'Visual'],
+    ['content', 'Content'],
+    ['legal', 'Legal'],
+    ['ai', 'AI'],
+  ];
 
   return (
     <>
       <div className="ph">
         <div>
           <div className="pt">{brand ? 'Edit Brand' : 'New Brand'}</div>
-          <div className="ps">{brand ? 'Update this brand’s identity' : 'Add a brand to your Creative OS'}</div>
+          <div className="ps">{brand ? 'Update this brand’s profile' : 'Add a brand to your Creative OS'}</div>
         </div>
         <button className="btn bg" onClick={onCancel}>← Cancel</button>
       </div>
 
-      <form action={formAction} style={{ maxWidth: 680 }}>
+      <form action={formAction} style={{ maxWidth: 720 }}>
         {brand?.id && <input type="hidden" name="id" value={brand.id} />}
         <input type="hidden" name="color" value={color} />
+        <input type="hidden" name="icon_url" value={iconUrl} />
 
-        <div className="card" style={{ padding: 22 }}>
-          <div style={{ marginBottom: 16 }}>
-            <label style={lbl}>Brand Name *</label>
-            <input style={inp} name="name" defaultValue={brand?.name || ''} placeholder="e.g. OH HEY THERE Matcha Cafe" required />
+        {/* ICON + NAME header card (always visible) */}
+        <div className="card" style={{ padding: 22, marginBottom: 16, display: 'flex', gap: 18, alignItems: 'center' }}>
+          <div style={{ width: 64, height: 64, borderRadius: 16, flex: '0 0 64px', background: iconUrl ? `center/cover no-repeat url(${iconUrl})` : color + '22', color, display: 'grid', placeItems: 'center', fontSize: 18, fontWeight: 700, overflow: 'hidden' }}>
+            {!iconUrl && (brand?.name || '?').slice(0, 2).toUpperCase()}
           </div>
-
-          <div style={{ marginBottom: 16 }}>
-            <label style={lbl}>Tagline</label>
-            <input style={inp} name="tagline" defaultValue={brand?.tagline || ''} placeholder="Short descriptor" />
-          </div>
-
-          <div style={{ marginBottom: 16 }}>
-            <label style={lbl}>Category</label>
-            <input style={inp} name="category" defaultValue={brand?.category || ''} placeholder="e.g. Specialty Cafe, Tea Line, Apparel" />
-          </div>
-
-          <div style={{ marginBottom: 16 }}>
-            <label style={lbl}>Mission</label>
-            <textarea style={{ ...inp, minHeight: 70, resize: 'vertical' }} name="mission" defaultValue={brand?.mission || ''} placeholder="What this brand exists to do." />
-          </div>
-
-          <div style={{ marginBottom: 16 }}>
-            <label style={lbl}>Positioning</label>
-            <input style={inp} name="positioning" defaultValue={brand?.positioning || ''} placeholder="One sentence: who you are for whom." />
-          </div>
-
-          <div style={{ marginBottom: 16 }}>
-            <label style={lbl}>Target Audience</label>
-            <textarea style={{ ...inp, minHeight: 70, resize: 'vertical' }} name="audience" defaultValue={brand?.audience || ''} placeholder="Who you're speaking to." />
-          </div>
-
-          <div style={{ marginBottom: 16 }}>
-            <label style={lbl}>Brand Personality</label>
-            <input style={inp} name="personality" defaultValue={(brand?.personality || []).join(', ')} placeholder="e.g. Curious, Warm, Confident, Playful" />
-            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 5 }}>Comma-separated traits.</div>
-          </div>
-
-          <div style={{ marginBottom: 16 }}>
-            <label style={lbl}>Brand Color</label>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              {palette.map((c) => (
-                <div
-                  key={c}
-                  onClick={() => setColor(c)}
-                  style={{ width: 28, height: 28, borderRadius: 6, background: c, cursor: 'pointer', border: color === c ? '2px solid var(--text)' : '2px solid transparent' }}
-                />
-              ))}
-              <input type="color" value={color} onChange={(e) => setColor(e.target.value)} style={{ width: 36, height: 28, background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }} />
-              <span style={{ fontSize: 12, color: 'var(--text3)' }}>{color}</span>
+          <div style={{ flex: 1 }}>
+            <Field label="Brand Name *">
+              <input style={inp} name="name" defaultValue={brand?.name || ''} placeholder="e.g. OH HEY THERE Matcha Cafe" required />
+            </Field>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <label className="btn bg bsm" style={{ cursor: 'pointer' }}>
+                {uploading ? 'Uploading…' : iconUrl ? 'Change icon' : '⬆ Upload icon'}
+                <input type="file" accept="image/*" onChange={handleIcon} style={{ display: 'none' }} />
+              </label>
+              {iconUrl && <button type="button" className="btn bg bsm" onClick={() => setIconUrl('')}>Remove</button>}
+              {uploadErr && <span style={{ fontSize: 12, color: '#ff6464' }}>{uploadErr}</span>}
             </div>
-          </div>
-
-          <div style={{ marginBottom: 16 }}>
-            <label style={lbl}>Brand Voice</label>
-            <textarea style={{ ...inp, minHeight: 90, resize: 'vertical' }} name="voice" defaultValue={brand?.voice || ''} placeholder="How this brand speaks — tone, personality, attitude." />
-          </div>
-
-          <div style={{ marginBottom: 16 }}>
-            <label style={lbl}>Style Guidelines</label>
-            <textarea style={{ ...inp, minHeight: 90, resize: 'vertical' }} name="style_guide" defaultValue={brand?.style_guide || ''} placeholder="Visual rules — colors, type, imagery, do’s and don’ts." />
-          </div>
-
-          <div style={{ marginBottom: 4 }}>
-            <label style={lbl}>Approved Messaging</label>
-            <textarea style={{ ...inp, minHeight: 80, resize: 'vertical' }} name="messaging" defaultValue={(brand?.messaging || []).join('\n')} placeholder="One pillar per line (or comma-separated)" />
-            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 5 }}>One messaging pillar per line.</div>
           </div>
         </div>
 
-        {/* CAPTION PLAYBOOK — machine-readable fields the Line-Up module reads */}
-        <div className="card" style={{ padding: 22, marginTop: 16 }}>
-          <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Caption Playbook</div>
-          <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 18 }}>Structured data the Line-Up module uses to auto-build captions.</div>
-
-          <div style={{ marginBottom: 16 }}>
-            <label style={lbl}>Caption Structure</label>
-            <input style={inp} name="caption_structure" defaultValue={bb.caption_structure || ''} placeholder="e.g. Hook → 1–2 line body → CTA → hashtags" />
-            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 5 }}>The shape every caption follows.</div>
-          </div>
-
-          <div style={{ marginBottom: 16 }}>
-            <label style={lbl}>Content Pillars</label>
-            <input style={inp} name="content_pillars" defaultValue={(bb.content_pillars || []).join(', ')} placeholder="Education, Products, Community, Behind the Scenes" />
-            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 5 }}>Comma-separated.</div>
-          </div>
-
-          <div style={{ marginBottom: 16 }}>
-            <label style={lbl}>Approved CTAs</label>
-            <textarea style={{ ...inp, minHeight: 70, resize: 'vertical' }} name="ctas" defaultValue={(bb.ctas || []).join('\n')} placeholder={'Visit us in BF Homes\nTry it this week\nDM us to reserve'} />
-            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 5 }}>One per line. The Line-Up picks from these.</div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
-            <div>
-              <label style={lbl}>Primary Hashtags</label>
-              <textarea style={{ ...inp, minHeight: 70, resize: 'vertical' }} name="hashtags_primary" defaultValue={(bb.hashtags_primary || []).join('\n')} placeholder={'#ohheythere\n#matcha'} />
-            </div>
-            <div>
-              <label style={lbl}>Secondary Hashtags</label>
-              <textarea style={{ ...inp, minHeight: 70, resize: 'vertical' }} name="hashtags_secondary" defaultValue={(bb.hashtags_secondary || []).join('\n')} placeholder={'#bfhomes\n#cafehopping'} />
-            </div>
-          </div>
-
-          <div style={{ marginBottom: 16 }}>
-            <label style={lbl}>Banned Hashtags</label>
-            <input style={inp} name="hashtags_banned" defaultValue={(bb.hashtags_banned || []).join(', ')} placeholder="Comma-separated tags to never use" />
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
-            <div>
-              <label style={lbl}>Preferred Vocabulary</label>
-              <textarea style={{ ...inp, minHeight: 70, resize: 'vertical' }} name="vocab_preferred" defaultValue={(bb.vocab_preferred || []).join('\n')} placeholder={'ceremonial\nwhisked\ncrafted'} />
-            </div>
-            <div>
-              <label style={lbl}>Words to Avoid</label>
-              <textarea style={{ ...inp, minHeight: 70, resize: 'vertical' }} name="vocab_banned" defaultValue={(bb.vocab_banned || []).join('\n')} placeholder={'cheap\nbest\nnumber one'} />
-            </div>
-          </div>
-
-          <div style={{ marginBottom: 4 }}>
-            <label style={lbl}>Emoji Rule</label>
-            <input style={inp} name="emoji_rule" defaultValue={bb.emoji_rule || ''} placeholder="e.g. Sparingly — 1 max, never in headlines" />
-          </div>
+        {/* TABS */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
+          {TABS.map(([id, label]) => (
+            <button key={id} type="button" onClick={() => setTab(id)}
+              className={`fb ${tab === id ? 'on' : ''}`}>{label}</button>
+          ))}
         </div>
 
-        {state?.error && (
-          <div style={{ marginTop: 14, padding: '10px 14px', background: 'rgba(255,100,100,.12)', border: '1px solid rgba(255,100,100,.3)', borderRadius: 'var(--rs)', color: '#ff6464', fontSize: 13 }}>
-            {state.error}
+        {/* ---------------- IDENTITY ---------------- */}
+        {tab === 'identity' && (
+          <div className="card" style={{ padding: 22 }}>
+            <Field label="Tagline"><input style={inp} name="tagline" defaultValue={brand?.tagline || ''} placeholder="Short descriptor" /></Field>
+            <Field label="Category"><input style={inp} name="category" defaultValue={brand?.category || ''} placeholder="e.g. Specialty Cafe, Tea Line, Apparel" /></Field>
+            <Field label="Mission"><textarea style={ta(70)} name="mission" defaultValue={brand?.mission || ''} placeholder="What this brand exists to do." /></Field>
+            <Field label="Positioning"><input style={inp} name="positioning" defaultValue={brand?.positioning || ''} placeholder="One sentence: who you are for whom." /></Field>
+            <Field label="Target Audience"><textarea style={ta(70)} name="audience" defaultValue={brand?.audience || ''} placeholder="Who you're speaking to." /></Field>
+            <Field label="Brand Personality" sub="Comma-separated traits."><input style={inp} name="personality" defaultValue={(brand?.personality || []).join(', ')} placeholder="e.g. Curious, Warm, Confident, Playful" /></Field>
+            <Field label="Brand Story" sub="The full narrative — include origin and founder philosophy here."><textarea style={ta(120)} name="brand_story" defaultValue={bb.brand_story || ''} placeholder="How the brand started, why it exists, what the founders believe." /></Field>
+            <Field label="Competitive Landscape" sub="Who else is in the space and how you're different."><textarea style={ta(90)} name="competitive_landscape" defaultValue={bb.competitive_landscape || ''} placeholder="Key competitors, your edge, what you avoid copying." /></Field>
+            <Field label="Customer Personas" sub="One persona per line, or a short paragraph each."><textarea style={ta(100)} name="customer_personas" defaultValue={bb.customer_personas || ''} placeholder={'The Curious Newcomer — first time trying matcha…\nThe Regular — comes weekly, values consistency…'} /></Field>
           </div>
         )}
 
+        {/* ---------------- VISUAL ---------------- */}
+        {tab === 'visual' && (
+          <div className="card" style={{ padding: 22 }}>
+            <Field label="Brand Color">
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                {palette.map((c) => (
+                  <div key={c} onClick={() => setColor(c)} style={{ width: 28, height: 28, borderRadius: 6, background: c, cursor: 'pointer', border: color === c ? '2px solid var(--text)' : '2px solid transparent' }} />
+                ))}
+                <input type="color" value={color} onChange={(e) => setColor(e.target.value)} style={{ width: 36, height: 28, background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }} />
+                <span style={{ fontSize: 12, color: 'var(--text3)' }}>{color}</span>
+              </div>
+            </Field>
+            <Field label="Style Guidelines"><textarea style={ta(90)} name="style_guide" defaultValue={brand?.style_guide || ''} placeholder="Visual rules — colors, type, imagery, do’s and don’ts." /></Field>
+            <Field label="Logo Rules" sub="Clear space, minimum size, what not to do."><textarea style={ta(80)} name="logo_rules" defaultValue={bb.logo_rules || ''} placeholder="How the logo should and shouldn't be used." /></Field>
+            <Field label="Typography" sub="Fonts, weights, hierarchy."><textarea style={ta(80)} name="typography" defaultValue={bb.typography || ''} placeholder="Headline font, body font, when to use each." /></Field>
+            <Field label="Photography Direction"><textarea style={ta(80)} name="photo_direction" defaultValue={bb.photo_direction || ''} placeholder="Lighting, mood, composition, color grading." /></Field>
+            <Field label="Video Direction"><textarea style={ta(80)} name="video_direction" defaultValue={bb.video_direction || ''} placeholder="Pacing, music, captions, format per platform." /></Field>
+            <Field label="Visual & Packaging Notes"><textarea style={ta(80)} name="packaging" defaultValue={bb.packaging || ''} placeholder="Cup design, labels, stickers, print standards." /></Field>
+            <div style={{ ...hint, borderTop: '1px solid var(--border)', paddingTop: 12, marginTop: 4 }}>📁 <strong>Visual Library</strong> (uploaded logo files, templates) is a file module coming in a later build.</div>
+          </div>
+        )}
+
+        {/* ---------------- CONTENT ---------------- */}
+        {tab === 'content' && (
+          <>
+            <div className="card" style={{ padding: 22 }}>
+              <Field label="Brand Voice"><textarea style={ta(90)} name="voice" defaultValue={brand?.voice || ''} placeholder="How this brand speaks — tone, attitude." /></Field>
+              <Field label="Approved Messaging" sub="One messaging pillar per line."><textarea style={ta(80)} name="messaging" defaultValue={(brand?.messaging || []).join('\n')} placeholder="One pillar per line (or comma-separated)" /></Field>
+              <Field label="Social Media Rules"><textarea style={ta(80)} name="social_rules" defaultValue={bb.social_rules || ''} placeholder="Posting cadence, platform do's/don'ts, formatting." /></Field>
+              <Field label="Comment & Community Response Guidelines"><textarea style={ta(90)} name="community_guidelines" defaultValue={bb.community_guidelines || ''} placeholder="Tone for replies, how to handle complaints, DMs, escalations." /></Field>
+              <Field label="Do's & Don'ts" sub="One per line."><textarea style={ta(90)} name="dos_donts" defaultValue={bb.dos_donts || ''} placeholder={"DO: keep captions warm and short\nDON'T: use corporate jargon"} /></Field>
+              <Field label="Brand Vocabulary Dictionary" sub="Words/phrases unique to the brand and their meaning."><textarea style={ta(80)} name="vocab_dictionary" defaultValue={bb.vocab_dictionary || ''} placeholder={'"OH HEY THERE moment" = a small joyful pause in the day'} /></Field>
+              <Field label="Frequently Asked Questions"><textarea style={ta(90)} name="faqs" defaultValue={bb.faqs || ''} placeholder={'Q: Do you have oat milk?\nA: Yes, always.'} /></Field>
+              <Field label="Seasonal Marketing Calendar"><textarea style={ta(80)} name="seasonal_calendar" defaultValue={bb.seasonal_calendar || ''} placeholder="Key dates, seasonal drops, recurring campaigns by month." /></Field>
+              <Field label="Campaign History"><textarea style={ta(80)} name="campaign_history" defaultValue={bb.campaign_history || ''} placeholder="Past campaigns and how they performed." /></Field>
+            </div>
+
+            {/* Caption Playbook stays its own card */}
+            <div className="card" style={{ padding: 22, marginTop: 16 }}>
+              <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Caption Playbook</div>
+              <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 18 }}>Structured data the Line-Up module uses to auto-build captions.</div>
+              <Field label="Caption Structure" sub="The shape every caption follows."><input style={inp} name="caption_structure" defaultValue={bb.caption_structure || ''} placeholder="e.g. Hook → body → CTA → hashtags" /></Field>
+              <Field label="Content Pillars" sub="Comma-separated."><input style={inp} name="content_pillars" defaultValue={(bb.content_pillars || []).join(', ')} placeholder="Education, Products, Community" /></Field>
+              <Field label="Approved CTAs" sub="One per line."><textarea style={ta(70)} name="ctas" defaultValue={(bb.ctas || []).join('\n')} placeholder={'Visit us in BF Homes\nTry it this week'} /></Field>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+                <div><label style={lbl}>Primary Hashtags</label><textarea style={ta(70)} name="hashtags_primary" defaultValue={(bb.hashtags_primary || []).join('\n')} placeholder={'#ohheythere\n#matcha'} /></div>
+                <div><label style={lbl}>Secondary Hashtags</label><textarea style={ta(70)} name="hashtags_secondary" defaultValue={(bb.hashtags_secondary || []).join('\n')} placeholder={'#bfhomes\n#cafehopping'} /></div>
+              </div>
+              <Field label="Banned Hashtags"><input style={inp} name="hashtags_banned" defaultValue={(bb.hashtags_banned || []).join(', ')} placeholder="Comma-separated tags to never use" /></Field>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+                <div><label style={lbl}>Preferred Vocabulary</label><textarea style={ta(70)} name="vocab_preferred" defaultValue={(bb.vocab_preferred || []).join('\n')} placeholder={'ceremonial\nwhisked'} /></div>
+                <div><label style={lbl}>Words to Avoid</label><textarea style={ta(70)} name="vocab_banned" defaultValue={(bb.vocab_banned || []).join('\n')} placeholder={'cheap\nbest'} /></div>
+              </div>
+              <Field label="Emoji Rule"><input style={inp} name="emoji_rule" defaultValue={bb.emoji_rule || ''} placeholder="e.g. Sparingly — 1 max, never in headlines" /></Field>
+            </div>
+            <div style={{ ...hint, marginTop: 10 }}>📁 <strong>Menu Database</strong> & <strong>Product Knowledge Base</strong> are structured-data modules coming in a later build.</div>
+          </>
+        )}
+
+        {/* ---------------- LEGAL ---------------- */}
+        {tab === 'legal' && (
+          <div className="card" style={{ padding: 22 }}>
+            <Field label="Legal Claims & Compliance" sub="Claims you can/can't make, required disclaimers, regulated language."><textarea style={ta(140)} name="legal_compliance" defaultValue={bb.legal_compliance || ''} placeholder={'Approved claims, banned claims, allergen notes, promo T&Cs.'} /></Field>
+          </div>
+        )}
+
+        {/* ---------------- AI ---------------- */}
+        {tab === 'ai' && (
+          <div className="card" style={{ padding: 22 }}>
+            <Field label="AI Prompt Examples" sub="Good prompts for generating on-brand content — the Strategist can reuse these."><textarea style={ta(160)} name="ai_prompts" defaultValue={bb.ai_prompts || ''} placeholder={'"Write a warm, short IG caption for a new seasonal drink, 1 emoji max…"'} /></Field>
+          </div>
+        )}
+
+        {state?.error && (
+          <div style={{ marginTop: 14, padding: '10px 14px', background: 'rgba(255,100,100,.12)', border: '1px solid rgba(255,100,100,.3)', borderRadius: 'var(--rs)', color: '#ff6464', fontSize: 13 }}>{state.error}</div>
+        )}
+
         <div style={{ marginTop: 16, display: 'flex', gap: 10 }}>
-          <button className="btn bl" type="submit" disabled={pending}>
+          <button className="btn bl" type="submit" disabled={pending || uploading}>
             {pending ? 'Saving…' : brand ? 'Save changes' : 'Create brand'}
           </button>
           <button className="btn bg" type="button" onClick={onCancel}>Cancel</button>
         </div>
+        <div style={{ ...hint, marginTop: 8 }}>Tip: fields are saved across all tabs when you click Save — switch tabs freely before saving.</div>
       </form>
     </>
   );
 }
 
-// =====================================================================
-// CONTENT CENTER — visual planning: board / table views, team & cadence
-// =====================================================================
 function ContentCenter({ content, brands, brandColor, subView }) {
   const [brandFilter, setBrandFilter] = useState('all');
   const STAT = {
