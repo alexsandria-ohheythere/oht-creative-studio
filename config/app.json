@@ -30,7 +30,17 @@
       ]
     },
 
-    { "id": "strategist", "label": "AI Strategist", "icon": "✦", "section": "Social Media", "roles": ["command"], "accent": "#DDEE26", "flagship": true }
+    { "id": "strategist", "label": "AI Strategist", "icon": "✦", "section": "Social Media", "roles": ["command"], "accent": "#DDEE26", "flagship": true },
+
+    { "id": "mc.theme", "label": "Theme", "icon": "◈", "section": "Marketing Collaterals", "roles": ["command"], "accent": "#EE268C" },
+
+    { "id": "mc.content", "label": "Content", "icon": "▣", "section": "Marketing Collaterals", "roles": ["command", "freelance"], "accent": "#64BC46" },
+
+    { "id": "mc.briefs", "label": "Briefs", "icon": "◇", "section": "Marketing Collaterals", "roles": ["command", "freelance"], "accent": "#FFAEF1" },
+
+    { "id": "mc.production", "label": "Production", "icon": "⊛", "section": "Marketing Collaterals", "roles": ["command", "freelance"], "accent": "#AED8FF" },
+
+    { "id": "mc.assets", "label": "Assets", "icon": "◉", "section": "Marketing Collaterals", "roles": ["command"], "accent": "#DDEE26" }
   ],
   "statuses": [
     { "id": "briefed", "label": "Briefed", "color": "#9494AA" },
