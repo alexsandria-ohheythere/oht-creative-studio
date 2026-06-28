@@ -1134,8 +1134,8 @@ function BrandCenter({ brands, isCommand, content }) {
           return (
             <div className="bcard" key={b.id} onClick={() => openDetail(b.id)}>
               <div className="bc-hd">
-                <div className="bc-av" style={{ background: b.color + '22', color: b.color }}>
-                  {(b.name || '?').slice(0, 2).toUpperCase()}
+                <div className="bc-av" style={{ background: b.brand_book?.icon_url ? `center/cover no-repeat url(${b.brand_book.icon_url})` : b.color + '22', color: b.color, overflow: 'hidden' }}>
+                  {!b.brand_book?.icon_url && (b.name || '?').slice(0, 2).toUpperCase()}
                 </div>
                 <div className="bc-n">{b.name}</div>
                 <div className="bc-d">{b.tagline}</div>
