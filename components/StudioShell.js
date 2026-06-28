@@ -1460,7 +1460,7 @@ function BrandForm({ brand, onDone, onCancel }) {
         </div>
 
         {/* ---------------- IDENTITY ---------------- */}
-        {tab === 'identity' && (
+        <div style={{ display: tab === 'identity' ? 'block' : 'none' }}>
           <div className="card" style={{ padding: 22 }}>
             <Field label="Tagline"><input style={inp} name="tagline" defaultValue={brand?.tagline || ''} placeholder="Short descriptor" /></Field>
             <Field label="Category"><input style={inp} name="category" defaultValue={brand?.category || ''} placeholder="e.g. Specialty Cafe, Tea Line, Apparel" /></Field>
@@ -1472,10 +1472,10 @@ function BrandForm({ brand, onDone, onCancel }) {
             <Field label="Competitive Landscape" sub="Who else is in the space and how you're different."><textarea style={ta(90)} name="competitive_landscape" defaultValue={bb.competitive_landscape || ''} placeholder="Key competitors, your edge, what you avoid copying." /></Field>
             <Field label="Customer Personas" sub="One persona per line, or a short paragraph each."><textarea style={ta(100)} name="customer_personas" defaultValue={bb.customer_personas || ''} placeholder={'The Curious Newcomer — first time trying matcha…\nThe Regular — comes weekly, values consistency…'} /></Field>
           </div>
-        )}
+        </div>
 
         {/* ---------------- VISUAL ---------------- */}
-        {tab === 'visual' && (
+        <div style={{ display: tab === 'visual' ? 'block' : 'none' }}>
           <div className="card" style={{ padding: 22 }}>
             {/* FULL PALETTE — 10 optional slots */}
             <div style={{ marginBottom: 20 }}>
@@ -1610,10 +1610,10 @@ function BrandForm({ brand, onDone, onCancel }) {
               </div>
             </div>
           </div>
-        )}
+        </div>
 
         {/* ---------------- CONTENT ---------------- */}
-        {tab === 'content' && (
+        <div style={{ display: tab === 'content' ? 'block' : 'none' }}>
           <>
             <div className="card" style={{ padding: 22 }}>
               <Field label="Brand Voice"><textarea style={ta(90)} name="voice" defaultValue={brand?.voice || ''} placeholder="How this brand speaks — tone, attitude." /></Field>
@@ -1647,21 +1647,21 @@ function BrandForm({ brand, onDone, onCancel }) {
             </div>
             <div style={{ ...hint, marginTop: 10 }}>📁 <strong>Menu Database</strong> & <strong>Product Knowledge Base</strong> are structured-data modules coming in a later build.</div>
           </>
-        )}
+        </div>
 
         {/* ---------------- LEGAL ---------------- */}
-        {tab === 'legal' && (
+        <div style={{ display: tab === 'legal' ? 'block' : 'none' }}>
           <div className="card" style={{ padding: 22 }}>
             <Field label="Legal Claims & Compliance" sub="Claims you can/can't make, required disclaimers, regulated language."><textarea style={ta(140)} name="legal_compliance" defaultValue={bb.legal_compliance || ''} placeholder={'Approved claims, banned claims, allergen notes, promo T&Cs.'} /></Field>
           </div>
-        )}
+        </div>
 
         {/* ---------------- AI ---------------- */}
-        {tab === 'ai' && (
+        <div style={{ display: tab === 'ai' ? 'block' : 'none' }}>
           <div className="card" style={{ padding: 22 }}>
             <Field label="AI Prompt Examples" sub="Good prompts for generating on-brand content — the Strategist can reuse these."><textarea style={ta(160)} name="ai_prompts" defaultValue={bb.ai_prompts || ''} placeholder={'"Write a warm, short IG caption for a new seasonal drink, 1 emoji max…"'} /></Field>
           </div>
-        )}
+        </div>
 
         {state?.error && (
           <div style={{ marginTop: 14, padding: '10px 14px', background: 'rgba(255,100,100,.12)', border: '1px solid rgba(255,100,100,.3)', borderRadius: 'var(--rs)', color: '#ff6464', fontSize: 13 }}>{state.error}</div>
