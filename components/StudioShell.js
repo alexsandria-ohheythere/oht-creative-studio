@@ -236,7 +236,7 @@ const CAMP_STATUS = [
 const campStatus = (id) => CAMP_STATUS.find((s) => s.id === id) || CAMP_STATUS[0];
 
 // Channels and the formats available within each. Used by Ideas + Briefs.
-const CHANNELS = ['TikTok', 'Instagram', 'Threads', 'Facebook', 'YouTube', 'Blog'];
+const CHANNELS = ['TikTok', 'Instagram', 'Threads', 'Facebook', 'YouTube'];
 const FORMATS_BY_CHANNEL = {
   TikTok: [
     'Short Form Video (60s)', 'Micro Video (6s-15s)', 'Duets Video',
@@ -260,7 +260,7 @@ const FORMATS_BY_CHANNEL = {
 };
 // Semantic channel colors (aligns with brand color system in memory).
 const CHANNEL_COLOR = {
-  TikTok: '#FFAEF1', Instagram: '#EF4576', Threads: '#9494AA',
+  TikTok: '#FFAEF1', Instagram: '#EF4576', Threads: '#2D2D38',
   Facebook: '#AED8FF', YouTube: '#64BC46', Blog: '#DDEE26',
 };
 
@@ -2290,10 +2290,6 @@ function PublishingCenter({ content, brands, brandColor, subView }) {
     }
   });
 
-  const channelClass = (ch) => {
-    const m = { instagram: 'ei', youtube: 'ee', linkedin: 'el', tiktok: 'et' };
-    return m[(ch || '').toLowerCase()] || 'ei';
-  };
   const cells = [];
   for (let i = 0; i < startPad; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
@@ -2350,11 +2346,19 @@ function PublishingCenter({ content, brands, brandColor, subView }) {
             {cells.map((d, i) => (
               <div className={`cc ${d === now.getDate() ? 'today' : ''} ${d === null ? 'om' : ''}`} key={i}>
                 {d && <div className="ccn">{d}</div>}
-                {d && (events[d] || []).map((e) => (
-                  <div className={`cev ${channelClass(e.channel)}`} key={e.id} title={e.title}>
-                    {e.title}
-                  </div>
-                ))}
+                {d && (events[d] || []).map((e) => {
+                  const cc = CHANNEL_COLOR[e.channel] || brandColor(e.brand);
+                  return (
+                    <div
+                      className="cev"
+                      key={e.id}
+                      title={e.channel ? `${e.title} · ${e.channel}` : e.title}
+                      style={{ background: cc + '2e', color: cc }}
+                    >
+                      {e.title}
+                    </div>
+                  );
+                })}
               </div>
             ))}
           </div>
@@ -2371,11 +2375,12 @@ function PublishingCenter({ content, brands, brandColor, subView }) {
           )}
           {scoped.filter((c) => c.status === 'scheduled' || c.publish_at).map((c) => {
             const bc = brandColor(c.brand);
+            const cc = CHANNEL_COLOR[c.channel] || '#9494AA';
             return (
               <div className="tr" key={c.id} style={{ gridTemplateColumns: '2.5fr 1fr 1fr 1fr' }}>
                 <div className="tdt">{c.title}</div>
                 <div className="td"><span className="sb2" style={{ background: bc + '22', color: bc }}>{c.brand}</span></div>
-                <div className="td">{c.channel || '—'}</div>
+                <div className="td">{c.channel ? <span className="sb2" style={{ background: cc + '22', color: cc }}>{c.channel}</span> : '—'}</div>
                 <div className="td">{c.publish_at ? new Date(c.publish_at).toLocaleDateString() : (c.due_date || '—')}</div>
               </div>
             );
