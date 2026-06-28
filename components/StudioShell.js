@@ -2266,12 +2266,24 @@ function PublishingCenter({ content, brands, brandColor, subView }) {
   const [view, setView] = useState('month');
   // Brand filter: 'all' shows everything; otherwise a brand name scopes the calendar.
   const [brandFilter, setBrandFilter] = useState('all');
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const monthName = now.toLocaleString('default', { month: 'long' });
+  // Viewed month is navigable — defaults to the current month.
+  const [cursor, setCursor] = useState({ year: now.getFullYear(), month: now.getMonth() });
+  const { year, month } = cursor;
+  const monthName = new Date(year, month, 1).toLocaleString('default', { month: 'long' });
   const first = new Date(year, month, 1);
   const startPad = first.getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  // Is the viewed month the real current month? (controls the "today" highlight)
+  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth();
+
+  const stepMonth = (delta) => {
+    setCursor((c) => {
+      const d = new Date(c.year, c.month + delta, 1);
+      return { year: d.getFullYear(), month: d.getMonth() };
+    });
+  };
+  const goToday = () => setCursor({ year: now.getFullYear(), month: now.getMonth() });
 
   // Apply the brand filter to all views (month grid + board/timeline tables).
   const scoped = brandFilter === 'all'
@@ -2304,7 +2316,14 @@ function PublishingCenter({ content, brands, brandColor, subView }) {
       </div>
 
       <div className="cal-hd">
-        <div className="cmon">{monthName} {year}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="cvws">
+            <div className="cvw" onClick={() => stepMonth(-1)} title="Previous month" aria-label="Previous month">‹</div>
+            <div className="cvw" onClick={goToday} title="Jump to current month">Today</div>
+            <div className="cvw" onClick={() => stepMonth(1)} title="Next month" aria-label="Next month">›</div>
+          </div>
+          <div className="cmon">{monthName} {year}</div>
+        </div>
         <div className="cvws">
           {['month', 'board', 'timeline'].map((v) => (
             <div key={v} className={`cvw ${view === v ? 'on' : ''}`} onClick={() => setView(v)} style={{ textTransform: 'capitalize' }}>{v}</div>
@@ -2344,7 +2363,7 @@ function PublishingCenter({ content, brands, brandColor, subView }) {
           </div>
           <div className="cgrid">
             {cells.map((d, i) => (
-              <div className={`cc ${d === now.getDate() ? 'today' : ''} ${d === null ? 'om' : ''}`} key={i}>
+              <div className={`cc ${isCurrentMonth && d === now.getDate() ? 'today' : ''} ${d === null ? 'om' : ''}`} key={i}>
                 {d && <div className="ccn">{d}</div>}
                 {d && (events[d] || []).map((e) => {
                   const cc = CHANNEL_COLOR[e.channel] || brandColor(e.brand);
