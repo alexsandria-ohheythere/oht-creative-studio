@@ -68,6 +68,15 @@ export async function saveBrand(prevState, formData) {
     video_direction: (formData.get('video_direction') || '').trim(),
     packaging: (formData.get('packaging') || '').trim(),
 
+    // Visual attachments
+    style_guide_pdf: safeJson(formData.get('style_guide_pdf'), null),
+    logo_images: safeJson(formData.get('logo_images'), []),
+    font_files: safeJson(formData.get('font_files'), []),
+    cover_templates: safeJson(formData.get('cover_templates'), []),
+    video_refs: safeJson(formData.get('video_refs'), []),
+    photo_images: safeJson(formData.get('photo_images'), {}),
+    packaging_images: safeJson(formData.get('packaging_images'), []),
+
     // Content
     social_rules: (formData.get('social_rules') || '').trim(),
     community_guidelines: (formData.get('community_guidelines') || '').trim(),
