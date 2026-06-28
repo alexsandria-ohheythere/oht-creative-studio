@@ -28,12 +28,12 @@ export default async function DashboardPage() {
   // Pipeline upstream: ideas and briefs.
   const { data: ideas } = await supabase
     .from('ideas')
-    .select('id, brand_id, campaign_id, pillar, channel, format, title, notes, hook, caption, hashtags, mandatories, status, created_at')
+    .select('id, brand_id, campaign_id, pillar, channel, format, title, notes, hook, caption, hashtags, mandatories, publish_date, production_due, edit_due, status, created_at')
     .order('created_at', { ascending: false });
 
   const { data: briefs } = await supabase
     .from('briefs')
-    .select('id, brand_id, idea_id, channel, format, brief, hook, caption, hashtags, mandatories, references, attachments, status, created_at')
+    .select('id, brand_id, idea_id, channel, format, brief, hook, caption, hashtags, mandatories, references, attachments, publish_date, production_due, edit_due, status, created_at')
     .order('created_at', { ascending: false });
 
   // Load campaigns. RLS scopes these (command sees all, freelancers see one).
