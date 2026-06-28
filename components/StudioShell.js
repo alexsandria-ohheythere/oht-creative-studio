@@ -18,6 +18,7 @@ import { createClient as createBrowserClient } from '../lib/supabase-browser';
 const NAV = appConfig.nav;
 const STATUSES = appConfig.statuses;
 const BRAND_COLOR = appConfig.brandColors;
+const GROUP_COLOR = appConfig.groupColors || {};
 
 function initials(name = '') {
   return name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
@@ -129,10 +130,15 @@ export default function StudioShell({ profile, email, content, brands = [], camp
                   <div key={n.id}>
                     <div
                       className={`ni ${on ? 'on' : ''} ${n.flagship ? 'flagship' : ''}`}
-                      style={on && n.accent ? { boxShadow: `inset 3px 0 0 ${n.accent}` } : {}}
+                      style={on ? { boxShadow: `inset 3px 0 0 ${GROUP_COLOR[sec] || 'var(--pink)'}` } : {}}
                       onClick={() => go(hasKids ? (n.children[0].id) : n.id)}
                     >
-                      <span className="ni-ic" style={n.accent ? { color: n.accent } : {}}>{n.icon}</span> {n.label}
+                      <span
+                        className="ni-ic"
+                        style={on
+                          ? { color: GROUP_COLOR[sec] || 'var(--pink)', filter: `drop-shadow(0 0 6px ${GROUP_COLOR[sec] || 'var(--pink)'})` }
+                          : { color: 'var(--text3)' }}
+                      >{n.icon}</span> {n.label}
                       {n.pill && <span className="ni-pill">{n.pill}</span>}
                       {n.id === 'camp' && <span className="ni-pill">{campaigns.length}</span>}
                       {hasKids && (
