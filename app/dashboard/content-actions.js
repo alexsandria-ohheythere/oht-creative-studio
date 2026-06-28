@@ -40,7 +40,14 @@ export async function saveIdea(prevState, formData) {
   const title = nz(formData.get('title'));
   const brand_id = nz(formData.get('brand_id'));
   const campaign_id = nz(formData.get('campaign_id'));
+  const pillar = nz(formData.get('pillar'));
+  const channel = nz(formData.get('channel'));
+  const format = nz(formData.get('format'));
   const notes = nz(formData.get('notes'));
+  const hook = nz(formData.get('hook'));
+  const caption = nz(formData.get('caption'));
+  const hashtags = nz(formData.get('hashtags'));
+  const mandatories = nz(formData.get('mandatories'));
   let status = nz(formData.get('status')) || 'new';
   if (!IDEA_STATUS.includes(status)) status = 'new';
 
@@ -48,7 +55,10 @@ export async function saveIdea(prevState, formData) {
   if (!brand_id) return { error: 'Pick a brand.' };
 
   const supabase = await createClient();
-  const payload = { title, brand_id, campaign_id, notes, status };
+  const payload = {
+    title, brand_id, campaign_id, pillar, channel, format,
+    notes, hook, caption, hashtags, mandatories, status,
+  };
   const q = id
     ? supabase.from('ideas').update(payload).eq('id', id)
     : supabase.from('ideas').insert(payload);
@@ -68,19 +78,38 @@ export async function deleteIdea(prevState, formData) {
   return { ok: true, deleted: true };
 }
 
-// Promote an approved/any idea into a new draft brief carrying idea_id.
+// Promote an idea into a new draft brief, carrying all its detail across.
 export async function promoteIdeaToBrief(prevState, formData) {
   const idea_id = nz(formData.get('idea_id'));
   const brand_id = nz(formData.get('brand_id'));
-  const channel = nz(formData.get('channel'));
   if (!idea_id || !brand_id) return { error: 'Missing idea or brand.' };
 
   const supabase = await createClient();
+
+  // Pull the idea so we can copy its detail into the brief.
+  const { data: idea } = await supabase
+    .from('ideas')
+    .select('channel, format, notes, hook, caption, hashtags, mandatories')
+    .eq('id', idea_id)
+    .single();
+
   // Mark the idea approved, then create the brief from it.
   await supabase.from('ideas').update({ status: 'approved' }).eq('id', idea_id);
+
   const res = await writeBack(
     supabase.from('briefs').insert({
-      idea_id, brand_id, channel, brief: '', status: 'draft',
+      idea_id,
+      brand_id,
+      channel: idea?.channel || null,
+      format: idea?.format || null,
+      brief: idea?.notes || '',
+      hook: idea?.hook || null,
+      caption: idea?.caption || null,
+      hashtags: idea?.hashtags || null,
+      mandatories: idea?.mandatories || null,
+      references: [],
+      attachments: [],
+      status: 'draft',
     })
   );
   if (res.ok) revalidatePath('/dashboard');
@@ -93,14 +122,50 @@ export async function saveBrief(prevState, formData) {
   const brand_id = nz(formData.get('brand_id'));
   const idea_id = nz(formData.get('idea_id'));
   const channel = nz(formData.get('channel'));
+  const format = nz(formData.get('format'));
   const brief = (formData.get('brief') || '').toString().trim();
+  const hook = nz(formData.get('hook'));
+  const caption = nz(formData.get('caption'));
+  const hashtags = nz(formData.get('hashtags'));
+  const mandatories = nz(formData.get('mandatories'));
   let status = nz(formData.get('status')) || 'draft';
   if (!BRIEF_STATUS.includes(status)) status = 'draft';
+
+  // references: newline-separated URLs -> array of clean strings.
+  let references = [];
+  const refRaw = (formData.get('references') || '').toString();
+  references = refRaw
+    .split(/[\n,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  // attachments: JSON array of { url, name } the client built after upload.
+  let attachments = [];
+  try {
+    const raw = formData.get('attachments');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        attachments = parsed
+          .map((a) => ({
+            url: (a?.url || '').toString().trim(),
+            name: (a?.name || '').toString().trim(),
+          }))
+          .filter((a) => a.url);
+      }
+    }
+  } catch {
+    attachments = [];
+  }
 
   if (!brand_id) return { error: 'Pick a brand.' };
 
   const supabase = await createClient();
-  const payload = { brand_id, idea_id, channel, brief, status };
+  const payload = {
+    brand_id, idea_id, channel, format, brief,
+    hook, caption, hashtags, mandatories,
+    references, attachments, status,
+  };
   const q = id
     ? supabase.from('briefs').update(payload).eq('id', id)
     : supabase.from('briefs').insert(payload);
