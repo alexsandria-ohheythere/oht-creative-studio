@@ -24,87 +24,111 @@ function parseMessaging(raw) {
     .filter(Boolean);
 }
 
+// --- Merge helpers -----------------------------------------------------
+// The form may submit a partial set of fields (e.g. only the fields whose
+// tab was mounted). To avoid wiping data that wasn't in this submission,
+// we only set a key when its field is actually present in the FormData,
+// and we merge onto the existing row.
+
+function has(formData, key) {
+  return formData.get(key) !== null;
+}
+// Set dest[key] = transform(value) ONLY if the form actually sent `key`.
+function setIfPresent(dest, formData, key, transform) {
+  if (has(formData, key)) {
+    dest[key] = transform(formData.get(key));
+  }
+}
+
+const trimStr = (v) => (v || '').trim();
+
 export async function saveBrand(prevState, formData) {
   const id = formData.get('id'); // present when editing
   const name = (formData.get('name') || '').trim();
-  const tagline = (formData.get('tagline') || '').trim();
-  const color = (formData.get('color') || '#9494AA').trim();
-  const voice = (formData.get('voice') || '').trim();
-  const style_guide = (formData.get('style_guide') || '').trim();
-  const messaging = parseMessaging(formData.get('messaging'));
-
-  // Strategy fields (AI-context core)
-  const category = (formData.get('category') || '').trim();
-  const mission = (formData.get('mission') || '').trim();
-  const positioning = (formData.get('positioning') || '').trim();
-  const audience = (formData.get('audience') || '').trim();
-  const personality = parseMessaging(formData.get('personality'));
-
-  // Caption Playbook — machine-readable structure the Line-Up module reads.
-  // Stored in the brand_book JSONB column so we never need a schema change
-  // to add more playbook fields later.
-  const brand_book = {
-    caption_structure: (formData.get('caption_structure') || '').trim(),
-    ctas: parseMessaging(formData.get('ctas')),
-    hashtags_primary: parseMessaging(formData.get('hashtags_primary')),
-    hashtags_secondary: parseMessaging(formData.get('hashtags_secondary')),
-    hashtags_banned: parseMessaging(formData.get('hashtags_banned')),
-    vocab_preferred: parseMessaging(formData.get('vocab_preferred')),
-    vocab_banned: parseMessaging(formData.get('vocab_banned')),
-    emoji_rule: (formData.get('emoji_rule') || '').trim(),
-    content_pillars: parseMessaging(formData.get('content_pillars')),
-
-    // Icon
-    icon_url: (formData.get('icon_url') || '').trim(),
-    // Identity (extended)
-    brand_story: (formData.get('brand_story') || '').trim(),
-    competitive_landscape: (formData.get('competitive_landscape') || '').trim(),
-    customer_personas: (formData.get('customer_personas') || '').trim(),
-
-    // Visual
-    logo_rules: (formData.get('logo_rules') || '').trim(),
-    typography: (formData.get('typography') || '').trim(),
-    photo_direction: (formData.get('photo_direction') || '').trim(),
-    video_direction: (formData.get('video_direction') || '').trim(),
-    packaging: (formData.get('packaging') || '').trim(),
-
-    // Visual attachments
-    style_guide_pdf: safeJson(formData.get('style_guide_pdf'), null),
-    logo_images: safeJson(formData.get('logo_images'), []),
-    font_files: safeJson(formData.get('font_files'), []),
-    cover_templates: safeJson(formData.get('cover_templates'), []),
-    video_refs: safeJson(formData.get('video_refs'), []),
-    photo_images: safeJson(formData.get('photo_images'), {}),
-    packaging_images: safeJson(formData.get('packaging_images'), []),
-
-    // Content
-    social_rules: (formData.get('social_rules') || '').trim(),
-    community_guidelines: (formData.get('community_guidelines') || '').trim(),
-    dos_donts: (formData.get('dos_donts') || '').trim(),
-    vocab_dictionary: (formData.get('vocab_dictionary') || '').trim(),
-    faqs: (formData.get('faqs') || '').trim(),
-    seasonal_calendar: (formData.get('seasonal_calendar') || '').trim(),
-    campaign_history: (formData.get('campaign_history') || '').trim(),
-
-    // Legal + AI
-    legal_compliance: (formData.get('legal_compliance') || '').trim(),
-    ai_prompts: (formData.get('ai_prompts') || '').trim(),
-
-    // Palette (object of slot→hex) and Gallery (array of {url, caption})
-    palette: safeJson(formData.get('palette'), {}),
-    gallery: safeJson(formData.get('gallery'), []),
-  };
 
   if (!name) {
     return { error: 'Brand name is required.' };
   }
 
   const supabase = await createClient();
-  const payload = {
-    name, tagline, color, voice, style_guide, messaging,
-    category, mission, positioning, audience, personality,
-    brand_book,
-  };
+
+  // Load the existing row first so we MERGE rather than overwrite. This is
+  // the core fix: any field not submitted keeps its previous value.
+  let existing = null;
+  if (id) {
+    const { data, error: readErr } = await supabase
+      .from('brands')
+      .select('*')
+      .eq('id', id)
+      .single();
+    if (readErr) {
+      return { error: 'Could not load existing brand to update: ' + readErr.message };
+    }
+    existing = data;
+  }
+
+  const prevBook =
+    existing && existing.brand_book && typeof existing.brand_book === 'object'
+      ? existing.brand_book
+      : {};
+
+  // ---- Top-level brand columns ----
+  // Start from the existing row (or {} for new), then overlay submitted fields.
+  const payload = existing ? {} : {};
+  payload.name = name; // name is always present and required
+
+  setIfPresent(payload, formData, 'tagline', trimStr);
+  setIfPresent(payload, formData, 'color', (v) => (v || '#9494AA').trim());
+  setIfPresent(payload, formData, 'voice', trimStr);
+  setIfPresent(payload, formData, 'style_guide', trimStr);
+  setIfPresent(payload, formData, 'messaging', parseMessaging);
+  setIfPresent(payload, formData, 'category', trimStr);
+  setIfPresent(payload, formData, 'mission', trimStr);
+  setIfPresent(payload, formData, 'positioning', trimStr);
+  setIfPresent(payload, formData, 'audience', trimStr);
+  setIfPresent(payload, formData, 'personality', parseMessaging);
+
+  // ---- brand_book (JSONB) ----
+  // Begin from the previous brand_book, then overlay only submitted keys.
+  const brand_book = { ...prevBook };
+
+  // Text fields
+  const bookStrFields = [
+    'caption_structure', 'emoji_rule', 'icon_url', 'brand_story',
+    'competitive_landscape', 'customer_personas', 'logo_rules', 'typography',
+    'photo_direction', 'video_direction', 'packaging', 'social_rules',
+    'community_guidelines', 'dos_donts', 'vocab_dictionary', 'faqs',
+    'seasonal_calendar', 'campaign_history', 'legal_compliance', 'ai_prompts',
+  ];
+  for (const f of bookStrFields) setIfPresent(brand_book, formData, f, trimStr);
+
+  // List fields (newline/comma separated)
+  const bookListFields = [
+    'ctas', 'hashtags_primary', 'hashtags_secondary', 'hashtags_banned',
+    'vocab_preferred', 'vocab_banned', 'content_pillars',
+  ];
+  for (const f of bookListFields) setIfPresent(brand_book, formData, f, parseMessaging);
+
+  // JSON fields (attachments / palette / gallery). These come from hidden
+  // inputs that are always present, but we still guard with setIfPresent so
+  // a missing field never blanks stored data.
+  const jsonObjFields = ['palette', 'photo_images'];
+  for (const f of jsonObjFields) {
+    setIfPresent(brand_book, formData, f, (v) => safeJson(v, prevBook[f] ?? {}));
+  }
+  const jsonArrFields = [
+    'gallery', 'logo_images', 'font_files', 'cover_templates',
+    'video_refs', 'packaging_images',
+  ];
+  for (const f of jsonArrFields) {
+    setIfPresent(brand_book, formData, f, (v) => safeJson(v, prevBook[f] ?? []));
+  }
+  // style_guide_pdf is a single object-or-null
+  setIfPresent(brand_book, formData, 'style_guide_pdf', (v) =>
+    safeJson(v, prevBook.style_guide_pdf ?? null)
+  );
+
+  payload.brand_book = brand_book;
 
   let error;
   if (id) {
