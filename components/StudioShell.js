@@ -3,6 +3,7 @@
 import { useState, useEffect, useActionState } from 'react';
 import appConfig from '../config/app.json';
 import { saveBrand, archiveBrand, deleteBrand } from '../app/dashboard/brand-actions';
+import { saveCampaign, deleteCampaign } from '../app/dashboard/campaign-actions';
 import { createClient as createBrowserClient } from '../lib/supabase-browser';
 
 // Access model:
@@ -17,7 +18,7 @@ function initials(name = '') {
   return name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 }
 
-export default function StudioShell({ profile, email, content, brands = [] }) {
+export default function StudioShell({ profile, email, content, brands = [], campaigns = [] }) {
   const role = profile.role === 'command' ? 'command' : 'freelance';
   const visibleNav = NAV.filter((n) => n.roles.includes(role));
   const [active, setActive] = useState('dash');
@@ -94,7 +95,7 @@ export default function StudioShell({ profile, email, content, brands = [] }) {
                     >
                       <span className="ni-ic" style={n.accent ? { color: n.accent } : {}}>{n.icon}</span> {n.label}
                       {n.pill && <span className="ni-pill">{n.pill}</span>}
-                      {n.id === 'camp' && <span className="ni-pill">4</span>}
+                      {n.id === 'camp' && <span className="ni-pill">{campaigns.length}</span>}
                       {hasKids && (
                         <span className="ni-caret" onClick={(e) => toggleGroup(n.id, e)}>
                           {expanded ? '▾' : '▸'}
@@ -159,7 +160,7 @@ export default function StudioShell({ profile, email, content, brands = [] }) {
             )}
 
             {parentId === 'camp' && (
-              <Campaigns isCommand={isCommand} />
+              <Campaigns isCommand={isCommand} campaigns={campaigns} content={content} brands={brands} brandColor={brandColor} />
             )}
 
             {parentId === 'content' && (
@@ -185,9 +186,190 @@ export default function StudioShell({ profile, email, content, brands = [] }) {
 }
 
 // =====================================================================
-// CAMPAIGNS — groups content into initiatives (next build)
+// CAMPAIGNS — groups content into initiatives with goals, dates & rollups
+// Reads the real campaigns table: brand_id, name, goal, status, starts_on,
+// ends_on. Content links via content_items.campaign_id; rollups aggregate
+// reach / engagement / conversions / revenue from linked content.
+// list → detail → form.
 // =====================================================================
-function Campaigns({ isCommand }) {
+const CAMP_STATUS = [
+  { id: 'planning', label: 'Planning', color: '#9494AA' },
+  { id: 'active',   label: 'Active',   color: '#64BC46' },
+  { id: 'done',     label: 'Done',     color: '#78b8e8' },
+];
+const campStatus = (id) => CAMP_STATUS.find((s) => s.id === id) || CAMP_STATUS[0];
+
+function fmtDate(d) {
+  if (!d) return null;
+  const dt = new Date(d + 'T00:00:00');
+  if (isNaN(dt)) return d;
+  return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+function fmtRange(a, b) {
+  const fa = fmtDate(a), fb = fmtDate(b);
+  if (fa && fb) return `${fa} → ${fb}`;
+  if (fa) return `From ${fa}`;
+  if (fb) return `Until ${fb}`;
+  return 'No dates set';
+}
+function fmtNum(n) {
+  const v = Number(n) || 0;
+  if (v >= 1000) return (v / 1000).toFixed(v >= 10000 ? 0 : 1) + 'k';
+  return String(v);
+}
+function fmtMoney(n) {
+  const v = Number(n) || 0;
+  return '₱' + v.toLocaleString('en-US', { maximumFractionDigits: 0 });
+}
+
+function Campaigns({ isCommand, campaigns = [], content = [], brands = [], brandColor }) {
+  const [view, setView] = useState('list'); // 'list' | 'detail' | 'form'
+  const [openId, setOpenId] = useState(null);
+  const [editing, setEditing] = useState(null);
+
+  // Resolve brand_id → brand object (name + color live on the brand row).
+  const brandById = (id) => brands.find((b) => b.id === id) || null;
+
+  const open = campaigns.find((c) => c.id === openId);
+
+  const [confirmDel, setConfirmDel] = useState(false);
+  const [delState, deleteAction, deleting] = useActionState(deleteCampaign, {});
+  useEffect(() => {
+    if (delState && delState.deleted) {
+      setConfirmDel(false); setView('list'); setOpenId(null); setEditing(null);
+    }
+  }, [delState]);
+
+  // Rollup from content linked via campaign_id.
+  const rollup = (campId) => {
+    const items = content.filter((c) => c.campaign_id === campId);
+    return {
+      items,
+      count: items.length,
+      reach: items.reduce((s, i) => s + (Number(i.reach) || 0), 0),
+      engagement: items.reduce((s, i) => s + (Number(i.engagement) || 0), 0),
+      conversions: items.reduce((s, i) => s + (Number(i.conversions) || 0), 0),
+      revenue: items.reduce((s, i) => s + (Number(i.revenue) || 0), 0),
+    };
+  };
+
+  function openDetail(id) { setOpenId(id); setView('detail'); setConfirmDel(false); }
+  function openNew() { setEditing(null); setView('form'); }
+  function openEdit(c) { setEditing(c); setView('form'); }
+  function backToList() { setView('list'); setOpenId(null); setEditing(null); }
+
+  // ----- FORM MODE -----
+  if (view === 'form') {
+    return <CampaignForm campaign={editing} brands={brands} onDone={backToList} onCancel={backToList} />;
+  }
+
+  // ----- DETAIL MODE -----
+  if (view === 'detail' && open) {
+    const brand = brandById(open.brand_id);
+    const brandName = brand?.name || 'Unassigned brand';
+    const bc = brand?.color || '#9494AA';
+    const st = campStatus(open.status);
+    const r = rollup(open.id);
+    const field = (label, value) => (
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text3)', marginBottom: 3 }}>{label}</div>
+        <div style={{ fontSize: 13, color: value ? 'var(--text)' : 'var(--text3)', lineHeight: 1.5 }}>{value || 'Not set'}</div>
+      </div>
+    );
+    return (
+      <>
+        <div className="ph">
+          <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+            <div style={{ width: 10, height: 44, borderRadius: 5, flex: '0 0 10px', background: bc }} />
+            <div>
+              <div className="pt">{open.name}</div>
+              <div className="ps">
+                <span style={{ color: bc, fontWeight: 600 }}>{brandName}</span>
+                {'  ·  '}<span style={{ color: st.color }}>{st.label}</span>
+                {'  ·  '}{fmtRange(open.starts_on, open.ends_on)}
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {isCommand && <button className="btn bg" onClick={() => openEdit(open)}>✎ Edit</button>}
+            {isCommand && !confirmDel && (
+              <button className="btn bg" style={{ color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }} onClick={() => setConfirmDel(true)}>🗑 Delete</button>
+            )}
+            {isCommand && confirmDel && (
+              <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                <span style={{ fontSize: 12, color: '#ff6464' }}>Delete campaign?</span>
+                <form action={deleteAction} style={{ display: 'inline' }}>
+                  <input type="hidden" name="id" value={open.id} />
+                  <button className="btn" type="submit" disabled={deleting}
+                    style={{ background: '#ff6464', color: '#111', borderColor: '#ff6464' }}>
+                    {deleting ? 'Deleting…' : 'Yes, delete'}
+                  </button>
+                </form>
+                <button className="btn bg" onClick={() => setConfirmDel(false)}>Cancel</button>
+              </span>
+            )}
+            <button className="btn bg" onClick={backToList}>← All campaigns</button>
+          </div>
+        </div>
+
+        {delState?.error && (
+          <div className="ap-note" style={{ borderColor: 'rgba(255,100,100,.35)', color: '#ff6464' }}>
+            {delState.error}
+          </div>
+        )}
+
+        <div className="sgrid" style={{ marginBottom: 18 }}>
+          <div className="sc"><div className="slbl">Linked Content</div><div className="sval" style={{ color: bc }}>{r.count}</div><div className="sdlt muted">items</div></div>
+          <div className="sc"><div className="slbl">Total Reach</div><div className="sval" style={{ color: '#78b8e8' }}>{fmtNum(r.reach)}</div><div className="sdlt muted">across posts</div></div>
+          <div className="sc"><div className="slbl">Engagement</div><div className="sval" style={{ color: 'var(--pink)' }}>{fmtNum(r.engagement)}</div><div className="sdlt muted">interactions</div></div>
+          <div className="sc"><div className="slbl">Revenue</div><div className="sval" style={{ color: 'var(--green)' }}>{fmtMoney(r.revenue)}</div><div className="sdlt muted">{r.conversions} conv.</div></div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.4fr)', gap: 18 }}>
+          <div className="sc" style={{ padding: 18 }}>
+            <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 14, marginBottom: 14 }}>Details</div>
+            {field('Goal', open.goal)}
+            {field('Brand', brandName)}
+            {field('Status', st.label)}
+            {field('Timeline', fmtRange(open.starts_on, open.ends_on))}
+          </div>
+
+          <div className="sc" style={{ padding: 18 }}>
+            <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 14, marginBottom: 14 }}>
+              Content in this campaign <span style={{ color: 'var(--text3)', fontWeight: 400 }}>· {r.count}</span>
+            </div>
+            {r.count === 0 && (
+              <div style={{ fontSize: 12, color: 'var(--text3)', lineHeight: 1.6 }}>
+                No content linked yet. In the Content Center, set a post&apos;s campaign to <b style={{ color: 'var(--text2)' }}>{open.name}</b> and it will roll up here.
+              </div>
+            )}
+            {r.items.map((i) => {
+              const ic = brandColor ? brandColor(i.brand) : bc;
+              return (
+                <div key={i.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: '1px solid var(--border)' }}>
+                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: ic, flex: '0 0 6px' }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{i.title}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text3)' }}>{i.channel || '—'} · {i.status}</div>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text3)', textAlign: 'right', flex: '0 0 auto' }}>
+                    {fmtNum(i.reach)} reach
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  // ----- LIST MODE -----
+  const sorted = [...campaigns].sort((a, b) => {
+    const order = { active: 0, planning: 1, done: 2 };
+    return (order[a.status] ?? 9) - (order[b.status] ?? 9);
+  });
+
   return (
     <>
       <div className="ph">
@@ -195,13 +377,130 @@ function Campaigns({ isCommand }) {
           <div className="pt">Campaigns</div>
           <div className="ps">Every marketing initiative, with its own goal and timeline</div>
         </div>
-        {isCommand && <button className="btn bl">＋ New Campaign</button>}
+        {isCommand && <button className="btn bl" onClick={openNew}>＋ New Campaign</button>}
       </div>
-      <ComingSoon
-        icon="◇"
-        title="Campaign Manager"
-        body="Group content into campaigns with goals, dates, and brands. Ties Content, Publishing, and Insights together so you can see how a whole initiative performed — not just single posts."
-      />
+
+      {campaigns.length === 0 ? (
+        <ComingSoon
+          icon="◇"
+          title="No campaigns yet"
+          body={isCommand
+            ? 'Create your first campaign to group content with a goal, dates and a brand. Linked content then rolls up here so you can see how a whole initiative performed — not just single posts.'
+            : 'No campaigns have been created for your brand yet.'}
+        />
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 16 }}>
+          {sorted.map((c) => {
+            const brand = brandById(c.brand_id);
+            const brandName = brand?.name || 'Unassigned';
+            const bc = brand?.color || '#9494AA';
+            const st = campStatus(c.status);
+            const r = rollup(c.id);
+            return (
+              <div key={c.id} className="sc" style={{ padding: 0, cursor: 'pointer', overflow: 'hidden', display: 'flex', flexDirection: 'column' }} onClick={() => openDetail(c.id)}>
+                <div style={{ height: 5, background: bc }} />
+                <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10, flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                    <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 15, lineHeight: 1.25 }}>{c.name}</div>
+                    <span style={{ flex: '0 0 auto', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: st.color, background: st.color + '22', padding: '3px 8px', borderRadius: 20 }}>{st.label}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: bc, background: bc + '1c', padding: '2px 8px', borderRadius: 5 }}>{brandName}</span>
+                    <span style={{ fontSize: 11, color: 'var(--text3)' }}>{fmtRange(c.starts_on, c.ends_on)}</span>
+                  </div>
+                  {c.goal && (
+                    <div style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{c.goal}</div>
+                  )}
+                  <div style={{ display: 'flex', gap: 14, marginTop: 'auto', paddingTop: 8, borderTop: '1px solid var(--border)' }}>
+                    <div><div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text3)' }}>Items</div><div style={{ fontSize: 14, fontWeight: 700 }}>{r.count}</div></div>
+                    <div><div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text3)' }}>Reach</div><div style={{ fontSize: 14, fontWeight: 700 }}>{fmtNum(r.reach)}</div></div>
+                    <div><div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text3)' }}>Revenue</div><div style={{ fontSize: 14, fontWeight: 700, color: 'var(--green)' }}>{fmtMoney(r.revenue)}</div></div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+}
+
+// ----- Campaign create / edit form (command only) -----
+function CampaignForm({ campaign, brands = [], onDone, onCancel }) {
+  const [state, formAction, pending] = useActionState(saveCampaign, {});
+  const [status, setStatus] = useState(campaign?.status || 'planning');
+  const [brandId, setBrandId] = useState(campaign?.brand_id || (brands[0]?.id || ''));
+
+  useEffect(() => { if (state?.ok) setTimeout(onDone, 0); }, [state]);
+
+  const lbl = { fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text3)', marginBottom: 6, display: 'block' };
+  const inp = { width: '100%', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--rs)', padding: '9px 12px', color: 'var(--text)', fontSize: 13, fontFamily: "'Inter',sans-serif" };
+  const ta = (h = 80) => ({ ...inp, minHeight: h, resize: 'vertical' });
+  const Field = ({ label, children }) => (
+    <div style={{ marginBottom: 16 }}>
+      <label style={lbl}>{label}</label>
+      {children}
+    </div>
+  );
+
+  return (
+    <>
+      <div className="ph">
+        <div>
+          <div className="pt">{campaign ? 'Edit campaign' : 'New campaign'}</div>
+          <div className="ps">Group content into an initiative with a goal, dates and a brand</div>
+        </div>
+        <button className="btn bg" onClick={onCancel}>← Cancel</button>
+      </div>
+
+      {state?.error && (
+        <div className="ap-note" style={{ borderColor: 'rgba(255,100,100,.35)', color: '#ff6464' }}>
+          {state.error}
+        </div>
+      )}
+
+      <form action={formAction} className="sc" style={{ padding: 22, maxWidth: 680 }}>
+        {campaign && <input type="hidden" name="id" value={campaign.id} />}
+
+        <Field label="Campaign name">
+          <input style={inp} name="name" defaultValue={campaign?.name || ''} placeholder="e.g. Summer Matcha Drop" />
+        </Field>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <Field label="Brand">
+            <select style={inp} name="brand_id" value={brandId} onChange={(e) => setBrandId(e.target.value)}>
+              {brands.length === 0 && <option value="">No brands available</option>}
+              {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Status">
+            <select style={inp} name="status" value={status} onChange={(e) => setStatus(e.target.value)}>
+              {CAMP_STATUS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+            </select>
+          </Field>
+        </div>
+
+        <Field label="Goal">
+          <textarea style={ta(70)} name="goal" defaultValue={campaign?.goal || ''} placeholder="What is this initiative trying to achieve? e.g. Drive 500 cafe visits + 2k new followers." />
+        </Field>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <Field label="Start date">
+            <input style={inp} type="date" name="starts_on" defaultValue={campaign?.starts_on || ''} />
+          </Field>
+          <Field label="End date">
+            <input style={inp} type="date" name="ends_on" defaultValue={campaign?.ends_on || ''} />
+          </Field>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+          <button className="btn bl" type="submit" disabled={pending}>
+            {pending ? 'Saving…' : campaign ? 'Save changes' : 'Create campaign'}
+          </button>
+          <button className="btn bg" type="button" onClick={onCancel}>Cancel</button>
+        </div>
+      </form>
     </>
   );
 }
