@@ -182,7 +182,7 @@ export default function StudioShell({ profile, email, content, brands = [], camp
             <div className="tb-search"><span>⌕</span><span>Search everything…</span><span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text3)', border: '1px solid var(--border)', padding: '1px 5px', borderRadius: 3 }}>⌘K</span></div>
             <div className="tb-acts">
               {isCommand && <button className="btn bg">⊕ New Asset</button>}
-              <button className="btn bl" onClick={() => go('strategist')}>✦ Ask the OS</button>
+              <button type="button" className="btn bl" onClick={() => go('strategist')}>✦ Ask the OS</button>
             </div>
           </div>
 
@@ -419,9 +419,9 @@ function Campaigns({ isCommand, campaigns = [], content = [], brands = [], brand
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            {isCommand && <button className="btn bg" onClick={() => openEdit(open)}>✎ Edit</button>}
+            {isCommand && <button type="button" className="btn bg" onClick={() => openEdit(open)}>✎ Edit</button>}
             {isCommand && !confirmDel && (
-              <button className="btn bg" style={{ color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }} onClick={() => setConfirmDel(true)}>🗑 Delete</button>
+              <button type="button" className="btn bg" style={{ color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }} onClick={() => setConfirmDel(true)}>🗑 Delete</button>
             )}
             {isCommand && confirmDel && (
               <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
@@ -433,10 +433,10 @@ function Campaigns({ isCommand, campaigns = [], content = [], brands = [], brand
                     {deleting ? 'Deleting…' : 'Yes, delete'}
                   </button>
                 </form>
-                <button className="btn bg" onClick={() => setConfirmDel(false)}>Cancel</button>
+                <button type="button" className="btn bg" onClick={() => setConfirmDel(false)}>Cancel</button>
               </span>
             )}
-            <button className="btn bg" onClick={backToList}>← All campaigns</button>
+            <button type="button" className="btn bg" onClick={backToList}>← All campaigns</button>
           </div>
         </div>
 
@@ -522,7 +522,7 @@ function Campaigns({ isCommand, campaigns = [], content = [], brands = [], brand
           <div className="pt">Campaigns</div>
           <div className="ps">Every marketing initiative, with its own goal and timeline</div>
         </div>
-        {isCommand && <button className="btn bl" onClick={openNew}>＋ New Campaign</button>}
+        {isCommand && <button type="button" className="btn bl" onClick={openNew}>＋ New Campaign</button>}
       </div>
 
       {campaigns.length === 0 ? (
@@ -606,7 +606,7 @@ function CampaignForm({ campaign, brands = [], onDone, onCancel }) {
           <div className="pt">{campaign ? 'Edit campaign' : 'New campaign'}</div>
           <div className="ps">Group content into an initiative with a goal, dates and a brand</div>
         </div>
-        <button className="btn bg" onClick={onCancel}>← Cancel</button>
+        <button type="button" className="btn bg" onClick={onCancel}>← Cancel</button>
       </div>
 
       {state?.error && (
@@ -738,7 +738,7 @@ function ComingSoon({ icon, title, body, actionLabel, onAction }) {
       <div className="soon-t">{title}</div>
       <div className="soon-b">{body}</div>
       {actionLabel && onAction ? (
-        <button className="btn bl" onClick={onAction} style={{ marginTop: 16 }}>{actionLabel}</button>
+        <button type="button" className="btn bl" onClick={onAction} style={{ marginTop: 16 }}>{actionLabel}</button>
       ) : (
         <div className="soon-tag">Coming in next build</div>
       )}
@@ -897,9 +897,9 @@ function BrandCenter({ brands, isCommand, content }) {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            {isCommand && <button className="btn bg" onClick={() => openEdit(open)}>✎ Edit</button>}
+            {isCommand && <button type="button" className="btn bg" onClick={() => openEdit(open)}>✎ Edit</button>}
             {isCommand && !confirmDel && (
-              <button className="btn bg" style={{ color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }} onClick={() => setConfirmDel(true)}>🗑 Delete</button>
+              <button type="button" className="btn bg" style={{ color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }} onClick={() => setConfirmDel(true)}>🗑 Delete</button>
             )}
             {isCommand && confirmDel && (
               <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
@@ -911,10 +911,10 @@ function BrandCenter({ brands, isCommand, content }) {
                     {deleting ? 'Deleting…' : 'Yes, delete'}
                   </button>
                 </form>
-                <button className="btn bg" onClick={() => setConfirmDel(false)}>Cancel</button>
+                <button type="button" className="btn bg" onClick={() => setConfirmDel(false)}>Cancel</button>
               </span>
             )}
-            <button className="btn bg" onClick={backToList}>← All brands</button>
+            <button type="button" className="btn bg" onClick={backToList}>← All brands</button>
           </div>
         </div>
 
@@ -1125,7 +1125,7 @@ function BrandCenter({ brands, isCommand, content }) {
           <div className="pt">Brand Center</div>
           <div className="ps">{brands.length} brands · voice, style, messaging & templates in one place</div>
         </div>
-        {isCommand && <button className="btn bl" onClick={openNew}>＋ Add Brand</button>}
+        {isCommand && <button type="button" className="btn bl" onClick={openNew}>＋ Add Brand</button>}
       </div>
 
       <div className="bgrid">
@@ -1282,7 +1282,7 @@ function BrandForm({ brand, onDone, onCancel }) {
           <div className="pt">{brand ? 'Edit Brand' : 'New Brand'}</div>
           <div className="ps">{brand ? 'Update this brand’s profile' : 'Add a brand to your Creative OS'}</div>
         </div>
-        <button className="btn bg" onClick={onCancel}>← Cancel</button>
+        <button type="button" className="btn bg" onClick={onCancel}>← Cancel</button>
       </div>
 
       <form action={formAction} style={{ maxWidth: 720 }}>
@@ -1561,7 +1561,7 @@ function IdeasView({ ideas, brands, campaigns, brandById, isCommand }) {
           <div className="pt">Ideas</div>
           <div className="ps">{ideas.length} concepts · pick up a pillar and shape it into a post</div>
         </div>
-        {isCommand && !showForm && <button className="btn bl" onClick={openNew}>＋ New idea</button>}
+        {isCommand && !showForm && <button type="button" className="btn bl" onClick={openNew}>＋ New idea</button>}
       </div>
 
       {(state?.error || delState?.error) && (
@@ -1683,7 +1683,7 @@ function IdeasView({ ideas, brands, campaigns, brandById, isCommand }) {
                       <input type="hidden" name="brand_id" value={i.brand_id || ''} />
                       <button className="btn bg" type="submit" disabled={promoting} style={{ fontSize: 12 }}>Promote to Brief →</button>
                     </form>
-                    <button className="btn bg" style={{ fontSize: 12 }} onClick={() => openEdit(i)}>✎</button>
+                    <button type="button" className="btn bg" style={{ fontSize: 12 }} onClick={() => openEdit(i)}>✎</button>
                     <form action={deleteAction} style={{ display: 'inline' }}>
                       <input type="hidden" name="id" value={i.id} />
                       <button className="btn bg" type="submit" style={{ fontSize: 12, color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }}>🗑</button>
@@ -1763,7 +1763,7 @@ function BriefsView({ briefs, ideas, brands, brandById, isCommand }) {
       <>
         <div className="ph">
           <div><div className="pt">{b.id ? 'Edit brief' : 'New brief'}</div><div className="ps">A thorough plan — references, attachments and the full copy</div></div>
-          <button className="btn bg" onClick={() => setEditing(null)}>← Back</button>
+          <button type="button" className="btn bg" onClick={() => setEditing(null)}>← Back</button>
         </div>
         {state?.error && <div className="ap-note" style={{ borderColor: 'rgba(255,100,100,.35)', color: '#ff6464' }}>{state.error}</div>}
         <form action={formAction} className="sc" style={{ padding: 22, maxWidth: 760 }}>
@@ -1857,7 +1857,7 @@ function BriefsView({ briefs, ideas, brands, brandById, isCommand }) {
     <>
       <div className="ph">
         <div><div className="pt">Briefs</div><div className="ps">{briefs.length} briefs · turn approved ideas into a plan to produce</div></div>
-        {isCommand && <button className="btn bl" onClick={openNewBrief}>＋ New brief</button>}
+        {isCommand && <button type="button" className="btn bl" onClick={openNewBrief}>＋ New brief</button>}
       </div>
 
       {(state?.error || delState?.error) && (
@@ -1918,7 +1918,7 @@ function BriefsView({ briefs, ideas, brands, brandById, isCommand }) {
                       <button className="btn bg" type="submit" disabled={starting} style={{ fontSize: 12, whiteSpace: 'nowrap' }}>Start Production →</button>
                     </form>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn bg" style={{ fontSize: 12, flex: 1 }} onClick={() => openEditBrief(b)}>✎</button>
+                      <button type="button" className="btn bg" style={{ fontSize: 12, flex: 1 }} onClick={() => openEditBrief(b)}>✎</button>
                       <form action={deleteAction} style={{ flex: 1 }}>
                         <input type="hidden" name="id" value={b.id} />
                         <button className="btn bg" type="submit" style={{ fontSize: 12, width: '100%', color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }}>🗑</button>
@@ -1959,7 +1959,7 @@ function ProductionView({ content, briefs, brands, campaigns, brandById, isComma
       <>
         <div className="ph">
           <div><div className="pt">{c.id ? 'Edit content' : 'New content'}</div><div className="ps">A piece being produced from a brief</div></div>
-          <button className="btn bg" onClick={() => setEditing(null)}>← Back</button>
+          <button type="button" className="btn bg" onClick={() => setEditing(null)}>← Back</button>
         </div>
         {state?.error && <div className="ap-note" style={{ borderColor: 'rgba(255,100,100,.35)', color: '#ff6464' }}>{state.error}</div>}
         <form action={formAction} className="sc" style={{ padding: 22, maxWidth: 680 }}>
@@ -2005,7 +2005,7 @@ function ProductionView({ content, briefs, brands, campaigns, brandById, isComma
     <>
       <div className="ph">
         <div><div className="pt">Production</div><div className="ps">{content.length} items in production · move work to review and approval</div></div>
-        {isCommand && <button className="btn bl" onClick={() => setEditing({})}>＋ New content</button>}
+        {isCommand && <button type="button" className="btn bl" onClick={() => setEditing({})}>＋ New content</button>}
       </div>
 
       {(state?.error || delState?.error) && (
@@ -2042,7 +2042,7 @@ function ProductionView({ content, briefs, brands, campaigns, brandById, isComma
                             <form action={statusAction}><input type="hidden" name="id" value={i.id} /><input type="hidden" name="status" value={nextOf[i.status]} />
                               <button className="btn bg" type="submit" style={{ fontSize: 11, padding: '3px 7px', color: col.color === '#64BC46' ? undefined : '#64BC46' }}>Advance →</button></form>
                           )}
-                          <button className="btn bg" style={{ fontSize: 11, padding: '3px 7px' }} onClick={() => setEditing(i)}>✎</button>
+                          <button type="button" className="btn bg" style={{ fontSize: 11, padding: '3px 7px' }} onClick={() => setEditing(i)}>✎</button>
                           <form action={deleteAction}><input type="hidden" name="id" value={i.id} />
                             <button className="btn bg" type="submit" style={{ fontSize: 11, padding: '3px 7px', color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }}>🗑</button></form>
                         </div>
