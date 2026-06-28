@@ -286,7 +286,8 @@ function Campaigns({ isCommand, campaigns = [], content = [], brands = [], brand
     return {
       items,
       count: items.length,
-      inProd: items.filter((i) => i.status === 'in_production').length,
+      // Treat command_review + in_production together as "being made".
+      inProd: items.filter((i) => ['command_review', 'in_production'].includes(i.status)).length,
       review: items.filter((i) => i.status === 'review').length,
       approved: items.filter((i) => i.status === 'approved').length,
     };
@@ -1351,7 +1352,7 @@ const STATUS_COLOR = {
   new: '#9494AA', draft: '#9494AA',
   approved: '#64BC46',
   archived: '#6a6a7a',
-  in_production: '#ffbb44', review: '#78b8e8',
+  command_review: '#EE268C', in_production: '#ffbb44', review: '#78b8e8',
 };
 
 // ----------------------------------------------------------------- IDEAS
@@ -1570,12 +1571,13 @@ function ProductionView({ content, briefs, brands, campaigns, brandById, isComma
   useEffect(() => { if (state?.ok) setEditing(null); }, [state]);
 
   const COLS = [
+    { id: 'command_review', label: 'Command Review', color: '#EE268C' },
     { id: 'in_production', label: 'In Production', color: '#ffbb44' },
     { id: 'review', label: 'In Review', color: '#78b8e8' },
     { id: 'approved', label: 'Approved', color: '#64BC46' },
   ];
-  const nextOf = { in_production: 'review', review: 'approved' };
-  const prevOf = { review: 'in_production', approved: 'review' };
+  const nextOf = { command_review: 'in_production', in_production: 'review', review: 'approved' };
+  const prevOf = { in_production: 'command_review', review: 'in_production', approved: 'review' };
 
   if (editing) {
     const c = editing;
@@ -1596,8 +1598,8 @@ function ProductionView({ content, briefs, brands, campaigns, brandById, isComma
               </select>
             </CField>
             <CField label="Status">
-              <select style={cInp} name="status" defaultValue={c.status || 'in_production'}>
-                <option value="in_production">In Production</option><option value="review">In Review</option><option value="approved">Approved</option>
+              <select style={cInp} name="status" defaultValue={c.status || 'command_review'}>
+                <option value="command_review">Command Review</option><option value="in_production">In Production</option><option value="review">In Review</option><option value="approved">Approved</option>
               </select>
             </CField>
           </div>
@@ -1636,7 +1638,7 @@ function ProductionView({ content, briefs, brands, campaigns, brandById, isComma
         <div className="ap-note" style={{ borderColor: 'rgba(255,100,100,.35)', color: '#ff6464' }}>{state?.error || delState?.error}</div>
       )}
 
-      <div className="ap-board">
+      <div className="ap-board" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
         {COLS.map((col) => {
           const items = content.filter((c) => c.status === col.id);
           return (
