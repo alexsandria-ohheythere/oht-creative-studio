@@ -788,9 +788,19 @@ function BrandForm({ brand, onDone, onCancel }) {
 
       <form action={formAction} style={{ maxWidth: 720 }}>
         {brand?.id && <input type="hidden" name="id" value={brand.id} />}
-        <input type="hidden" name="color" value={color} />
+        <input type="hidden" name="color" value={(() => {
+          const p1 = paletteVals.p1;
+          if (p1) { return p1.startsWith('#') ? p1 : '#' + p1.replace(/[^0-9a-fA-F]/g, ''); }
+          return color;
+        })()} />
         <input type="hidden" name="icon_url" value={iconUrl} />
-        <input type="hidden" name="palette" value={JSON.stringify(paletteVals)} />
+        <input type="hidden" name="palette" value={JSON.stringify(
+          Object.fromEntries(Object.entries(paletteVals).map(([k, v]) => {
+            if (!v) return [k, ''];
+            const h = v.startsWith('#') ? v : '#' + v.replace(/[^0-9a-fA-F]/g, '');
+            return [k, h];
+          }))
+        )} />
         <input type="hidden" name="gallery" value={JSON.stringify(gallery)} />
 
         {/* ICON + NAME header card (always visible) */}
@@ -839,16 +849,6 @@ function BrandForm({ brand, onDone, onCancel }) {
         {/* ---------------- VISUAL ---------------- */}
         {tab === 'visual' && (
           <div className="card" style={{ padding: 22 }}>
-            <Field label="Primary Brand Color" sub="Used for accents across the app.">
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                {['#EE268C', '#64BC46', '#AED8FF', '#FFAEF1', '#DDEE26'].map((c) => (
-                  <div key={c} onClick={() => setColor(c)} style={{ width: 28, height: 28, borderRadius: 6, background: c, cursor: 'pointer', border: color === c ? '2px solid var(--text)' : '2px solid transparent' }} />
-                ))}
-                <input type="color" value={color} onChange={(e) => setColor(e.target.value)} style={{ width: 36, height: 28, background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }} />
-                <span style={{ fontSize: 12, color: 'var(--text3)' }}>{color}</span>
-              </div>
-            </Field>
-
             {/* FULL PALETTE — 10 optional slots */}
             <div style={{ marginBottom: 20 }}>
               <label style={lbl}>Color Palette</label>
@@ -858,23 +858,25 @@ function BrandForm({ brand, onDone, onCancel }) {
                   <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--text3)', marginBottom: 8 }}>{group}</div>
                   <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                     {PALETTE_SLOTS.filter((s) => s.group === group).map((s) => {
-                      const val = paletteVals[s.key];
+                      const raw = paletteVals[s.key];
+                      const val = raw ? (raw.startsWith('#') ? raw : '#' + raw.replace(/[^0-9a-fA-F]/g, '')) : '';
+                      const valid = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(val);
                       const label = s.key === 'black' ? 'Black' : s.key === 'white' ? 'White' : '';
                       return (
                         <div key={s.key} style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center' }}>
                           <label style={{ cursor: 'pointer', position: 'relative' }}>
-                            <div style={{ width: 46, height: 46, borderRadius: 10, background: val || 'transparent', border: val ? '1px solid var(--border)' : '1.5px dashed var(--border)', display: 'grid', placeItems: 'center', color: 'var(--text3)', fontSize: 18 }}>
-                              {!val && '+'}
+                            <div style={{ width: 46, height: 46, borderRadius: 10, background: valid ? val : 'transparent', border: valid ? '1px solid var(--border)' : '1.5px dashed var(--border)', display: 'grid', placeItems: 'center', color: 'var(--text3)', fontSize: 18 }}>
+                              {!valid && '+'}
                             </div>
-                            <input type="color" value={val || '#000000'} onChange={(e) => setSlot(s.key, e.target.value)} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }} />
+                            <input type="color" value={valid ? val : '#000000'} onChange={(e) => setSlot(s.key, e.target.value)} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }} />
                           </label>
                           <input
-                            value={val}
+                            value={raw}
                             onChange={(e) => setSlot(s.key, e.target.value)}
                             placeholder={label || '#hex'}
                             style={{ width: 72, fontSize: 11, textAlign: 'center', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 6px', color: 'var(--text)', fontFamily: 'monospace' }}
                           />
-                          {val && <span onClick={() => setSlot(s.key, '')} style={{ fontSize: 10, color: 'var(--text3)', cursor: 'pointer' }}>clear</span>}
+                          {raw && <span onClick={() => setSlot(s.key, '')} style={{ fontSize: 10, color: 'var(--text3)', cursor: 'pointer' }}>clear</span>}
                         </div>
                       );
                     })}
