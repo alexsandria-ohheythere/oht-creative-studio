@@ -2269,6 +2269,9 @@ function ProductionView({ content, briefs, brands, campaigns, brandById, isComma
 // PUBLISHING CENTER — calendar of scheduled content across channels
 // =====================================================================
 function PublishingCenter({ content, brands, brandColor, subView }) {
+  if (subView === 'channels') {
+    return <ChannelsView content={content} brands={brands} brandColor={brandColor} />;
+  }
   const now = new Date();
   const [view, setView] = useState('month');
   // Brand filter: 'all' shows everything; otherwise a brand name scopes the calendar.
@@ -2394,6 +2397,89 @@ function PublishingCenter({ content, brands, brandColor, subView }) {
           })}
         </div>
       )}
+    </>
+  );
+}
+
+// =====================================================================
+// CHANNELS VIEW — pick a platform, see content lined up per brand
+// =====================================================================
+function ChannelsView({ content, brands, brandColor }) {
+  const PLATFORMS = ['TikTok', 'Instagram', 'Threads', 'Facebook', 'YouTube', 'Blog'];
+  const [platform, setPlatform] = useState('Instagram');
+
+  // All content on the selected platform.
+  const onPlatform = content.filter((c) => c.channel === platform);
+
+  // Per-brand rollup: scheduled, in production (anything not scheduled/published), total.
+  const rows = brands.map((b) => {
+    const items = onPlatform.filter((c) => c.brand === b.name);
+    const scheduled = items.filter((c) => c.status === 'scheduled' || c.publish_at).length;
+    const total = items.length;
+    const inProd = total - scheduled;
+    return { brand: b.name, color: b.color || brandColor(b.name), scheduled, inProd, total };
+  }).sort((a, b) => b.total - a.total);
+
+  const grand = rows.reduce((s, r) => s + r.total, 0);
+  const cc = CHANNEL_COLOR[platform] || '#9494AA';
+
+  return (
+    <>
+      <div className="ph">
+        <div>
+          <div className="pt">Channels</div>
+          <div className="ps">Pick a platform to see how much content is lined up per brand</div>
+        </div>
+      </div>
+
+      {/* Platform selector */}
+      <div className="cvws" style={{ display: 'flex', flexWrap: 'wrap', width: 'fit-content', maxWidth: '100%', marginBottom: 16 }}>
+        {PLATFORMS.map((p) => {
+          const on = platform === p;
+          const pc = CHANNEL_COLOR[p] || '#9494AA';
+          return (
+            <div
+              key={p}
+              className={`cvw ${on ? 'on' : ''}`}
+              onClick={() => setPlatform(p)}
+              style={on ? { color: pc, background: pc + '22' } : { color: pc }}
+            >
+              {p}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Per-brand table for the selected platform */}
+      <div className="ctbl">
+        <div className="tblh" style={{ gridTemplateColumns: '2.5fr 1fr 1fr 1fr' }}>
+          <div className="th">Brand</div>
+          <div className="th">In Production</div>
+          <div className="th">Scheduled</div>
+          <div className="th">Total Lined Up</div>
+        </div>
+        {grand === 0 && (
+          <div style={{ padding: 30, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
+            No content on {platform} yet.
+          </div>
+        )}
+        {grand > 0 && rows.map((r) => (
+          <div className="tr" key={r.brand} style={{ gridTemplateColumns: '2.5fr 1fr 1fr 1fr' }}>
+            <div className="tdt"><span className="sb2" style={{ background: r.color + '22', color: r.color }}>{r.brand}</span></div>
+            <div className="td">{r.inProd}</div>
+            <div className="td">{r.scheduled}</div>
+            <div className="td" style={{ fontWeight: 700, color: cc }}>{r.total}</div>
+          </div>
+        ))}
+        {grand > 0 && (
+          <div className="tr" style={{ gridTemplateColumns: '2.5fr 1fr 1fr 1fr', borderTop: '1px solid var(--border)' }}>
+            <div className="tdt" style={{ color: 'var(--text3)', fontWeight: 600 }}>All brands</div>
+            <div className="td">{rows.reduce((s, r) => s + r.inProd, 0)}</div>
+            <div className="td">{rows.reduce((s, r) => s + r.scheduled, 0)}</div>
+            <div className="td" style={{ fontWeight: 700, color: cc }}>{grand}</div>
+          </div>
+        )}
+      </div>
     </>
   );
 }
