@@ -4,6 +4,11 @@ import { useState, useEffect, useActionState } from 'react';
 import appConfig from '../config/app.json';
 import { saveBrand, archiveBrand, deleteBrand } from '../app/dashboard/brand-actions';
 import { saveCampaign, deleteCampaign } from '../app/dashboard/campaign-actions';
+import {
+  saveIdea, deleteIdea, promoteIdeaToBrief,
+  saveBrief, deleteBrief, startProduction,
+  saveContent, setContentStatus, deleteContent,
+} from '../app/dashboard/content-actions';
 import { createClient as createBrowserClient } from '../lib/supabase-browser';
 
 // Access model:
@@ -18,7 +23,7 @@ function initials(name = '') {
   return name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 }
 
-export default function StudioShell({ profile, email, content, brands = [], campaigns = [] }) {
+export default function StudioShell({ profile, email, content, brands = [], campaigns = [], ideas = [], briefs = [] }) {
   const role = profile.role === 'command' ? 'command' : 'freelance';
   const visibleNav = NAV.filter((n) => n.roles.includes(role));
 
@@ -57,7 +62,8 @@ export default function StudioShell({ profile, email, content, brands = [], camp
   };
 
   const byStatus = (s) => content.filter((c) => c.status === s);
-  const pendingCount = content.filter((c) => ['submitted', 'changes'].includes(c.status)).length;
+  // Real content statuses: in_production | review | approved.
+  const pendingCount = content.filter((c) => c.status === 'review').length;
 
   function go(id) {
     setActive(id);
@@ -194,7 +200,7 @@ export default function StudioShell({ profile, email, content, brands = [], camp
             )}
 
             {parentId === 'content' && (
-              <ContentCenter content={content} brands={brands} brandColor={brandColor} subView={subView} />
+              <ContentCenter content={content} ideas={ideas} briefs={briefs} brands={brands} campaigns={campaigns} isCommand={isCommand} subView={subView} />
             )}
 
             {parentId === 'publishing' && (
@@ -271,15 +277,18 @@ function Campaigns({ isCommand, campaigns = [], content = [], brands = [], brand
   }, [delState]);
 
   // Rollup from content linked via campaign_id.
+  // Rollup from content linked via campaign_id. The live content_items table
+  // has no reach/engagement/revenue columns (those live in the performance
+  // table), so we report what we truly have: how much content is linked and
+  // where it sits in production.
   const rollup = (campId) => {
     const items = content.filter((c) => c.campaign_id === campId);
     return {
       items,
       count: items.length,
-      reach: items.reduce((s, i) => s + (Number(i.reach) || 0), 0),
-      engagement: items.reduce((s, i) => s + (Number(i.engagement) || 0), 0),
-      conversions: items.reduce((s, i) => s + (Number(i.conversions) || 0), 0),
-      revenue: items.reduce((s, i) => s + (Number(i.revenue) || 0), 0),
+      inProd: items.filter((i) => i.status === 'in_production').length,
+      review: items.filter((i) => i.status === 'review').length,
+      approved: items.filter((i) => i.status === 'approved').length,
     };
   };
 
@@ -350,9 +359,9 @@ function Campaigns({ isCommand, campaigns = [], content = [], brands = [], brand
 
         <div className="sgrid" style={{ marginBottom: 18 }}>
           <div className="sc"><div className="slbl">Linked Content</div><div className="sval" style={{ color: bc }}>{r.count}</div><div className="sdlt muted">items</div></div>
-          <div className="sc"><div className="slbl">Total Reach</div><div className="sval" style={{ color: '#78b8e8' }}>{fmtNum(r.reach)}</div><div className="sdlt muted">across posts</div></div>
-          <div className="sc"><div className="slbl">Engagement</div><div className="sval" style={{ color: 'var(--pink)' }}>{fmtNum(r.engagement)}</div><div className="sdlt muted">interactions</div></div>
-          <div className="sc"><div className="slbl">Revenue</div><div className="sval" style={{ color: 'var(--green)' }}>{fmtMoney(r.revenue)}</div><div className="sdlt muted">{r.conversions} conv.</div></div>
+          <div className="sc"><div className="slbl">In Production</div><div className="sval" style={{ color: '#ffbb44' }}>{r.inProd}</div><div className="sdlt muted">being made</div></div>
+          <div className="sc"><div className="slbl">In Review</div><div className="sval" style={{ color: '#78b8e8' }}>{r.review}</div><div className="sdlt muted">awaiting sign-off</div></div>
+          <div className="sc"><div className="slbl">Approved</div><div className="sval" style={{ color: 'var(--green)' }}>{r.approved}</div><div className="sdlt muted">ready</div></div>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.4fr)', gap: 18 }}>
@@ -374,16 +383,17 @@ function Campaigns({ isCommand, campaigns = [], content = [], brands = [], brand
               </div>
             )}
             {r.items.map((i) => {
-              const ic = brandColor ? brandColor(i.brand) : bc;
+              const ib = brands.find((b) => b.id === i.brand_id);
+              const ic = ib?.color || bc;
               return (
                 <div key={i.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: '1px solid var(--border)' }}>
                   <div style={{ width: 6, height: 6, borderRadius: '50%', background: ic, flex: '0 0 6px' }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{i.title}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text3)' }}>{i.channel || '—'} · {i.status}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text3)' }}>{ib?.name || 'Unassigned'}</div>
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--text3)', textAlign: 'right', flex: '0 0 auto' }}>
-                    {fmtNum(i.reach)} reach
+                    {i.status}
                   </div>
                 </div>
               );
@@ -443,8 +453,8 @@ function Campaigns({ isCommand, campaigns = [], content = [], brands = [], brand
                   )}
                   <div style={{ display: 'flex', gap: 14, marginTop: 'auto', paddingTop: 8, borderTop: '1px solid var(--border)' }}>
                     <div><div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text3)' }}>Items</div><div style={{ fontSize: 14, fontWeight: 700 }}>{r.count}</div></div>
-                    <div><div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text3)' }}>Reach</div><div style={{ fontSize: 14, fontWeight: 700 }}>{fmtNum(r.reach)}</div></div>
-                    <div><div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text3)' }}>Revenue</div><div style={{ fontSize: 14, fontWeight: 700, color: 'var(--green)' }}>{fmtMoney(r.revenue)}</div></div>
+                    <div><div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text3)' }}>In Prod.</div><div style={{ fontSize: 14, fontWeight: 700 }}>{r.inProd}</div></div>
+                    <div><div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text3)' }}>Approved</div><div style={{ fontSize: 14, fontWeight: 700, color: 'var(--green)' }}>{r.approved}</div></div>
                   </div>
                 </div>
               </div>
@@ -1311,64 +1321,360 @@ function BrandForm({ brand, onDone, onCancel }) {
   );
 }
 
-function ContentCenter({ content, brands, brandColor, subView }) {
-  const [brandFilter, setBrandFilter] = useState('all');
-  const STAT = {
-    briefed: { c: 's-dr', label: 'Briefed' },
-    progress: { c: 's-sc', label: 'In Progress' },
-    submitted: { c: 's-rv', label: 'Submitted' },
-    changes: { c: 's-rv', label: 'Changes Req.' },
-    approved: { c: 's-lv', label: 'Approved' },
-    scheduled: { c: 's-sc', label: 'Scheduled' },
-  };
-  const rows = content.filter((c) => brandFilter === 'all' || c.brand === brandFilter);
+// Content pipeline: Ideas -> Briefs -> Production (-> Assets, later).
+// Driven by subView ('ideas' | 'briefs' | 'production'); defaults to ideas.
+// All wired to the REAL schema:
+//   ideas(brand_id, campaign_id, title, notes, status new|approved|archived)
+//   briefs(brand_id, idea_id, channel, brief, status draft|approved|archived)
+//   content_items(brand_id, brief_id, campaign_id, title, body,
+//                 status in_production|review|approved)
+function ContentCenter({ content, ideas = [], briefs = [], brands = [], campaigns = [], isCommand, subView }) {
+  const tab = ['ideas', 'briefs', 'production'].includes(subView) ? subView : 'ideas';
+  const brandById = (id) => brands.find((b) => b.id === id) || null;
+
+  if (tab === 'ideas') return <IdeasView ideas={ideas} brands={brands} campaigns={campaigns} brandById={brandById} isCommand={isCommand} />;
+  if (tab === 'briefs') return <BriefsView briefs={briefs} ideas={ideas} brands={brands} brandById={brandById} isCommand={isCommand} />;
+  return <ProductionView content={content} briefs={briefs} brands={brands} campaigns={campaigns} brandById={brandById} isCommand={isCommand} />;
+}
+
+// Shared form atoms.
+const cLbl = { fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text3)', marginBottom: 6, display: 'block' };
+const cInp = { width: '100%', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--rs)', padding: '9px 12px', color: 'var(--text)', fontSize: 13, fontFamily: "'Inter',sans-serif" };
+const cTa = (h = 80) => ({ ...cInp, minHeight: h, resize: 'vertical' });
+function CField({ label, children }) {
+  return <div style={{ marginBottom: 14 }}><label style={cLbl}>{label}</label>{children}</div>;
+}
+function Pill({ text, color }) {
+  return <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color, background: color + '22', padding: '3px 8px', borderRadius: 20 }}>{text}</span>;
+}
+const STATUS_COLOR = {
+  new: '#9494AA', draft: '#9494AA',
+  approved: '#64BC46',
+  archived: '#6a6a7a',
+  in_production: '#ffbb44', review: '#78b8e8',
+};
+
+// ----------------------------------------------------------------- IDEAS
+function IdeasView({ ideas, brands, campaigns, brandById, isCommand }) {
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [state, formAction, pending] = useActionState(saveIdea, {});
+  const [, promoteAction, promoting] = useActionState(promoteIdeaToBrief, {});
+  const [delState, deleteAction] = useActionState(deleteIdea, {});
+  const [brandId, setBrandId] = useState('');
+  const [campId, setCampId] = useState('');
+  const [status, setStatus] = useState('new');
+
+  useEffect(() => { if (state?.ok) { setShowForm(false); setEditing(null); } }, [state]);
+
+  function openNew() { setEditing(null); setBrandId(brands[0]?.id || ''); setCampId(''); setStatus('new'); setShowForm(true); }
+  function openEdit(i) { setEditing(i); setBrandId(i.brand_id || ''); setCampId(i.campaign_id || ''); setStatus(i.status || 'new'); setShowForm(true); }
 
   return (
     <>
       <div className="ph">
         <div>
-          <div className="pt">Content Center</div>
-          <div className="ps">{rows.length} items · planning, cadence & team assignments</div>
+          <div className="pt">Ideas</div>
+          <div className="ps">{ideas.length} concepts · the top of the content pipeline</div>
         </div>
+        {isCommand && !showForm && <button className="btn bl" onClick={openNew}>＋ New idea</button>}
       </div>
 
-      <div className="cfilts">
-        <button className={`fb ${brandFilter === 'all' ? 'on' : ''}`} onClick={() => setBrandFilter('all')}>All brands</button>
-        {brands.map((b) => (
-          <button
-            key={b.id}
-            className={`fb ${brandFilter === b.name ? 'on' : ''}`}
-            onClick={() => setBrandFilter(b.name)}
-            style={brandFilter === b.name ? { color: b.color, borderColor: b.color + '66', background: b.color + '1a' } : {}}
-          >
-            {b.name}
-          </button>
-        ))}
+      {(state?.error || delState?.error) && (
+        <div className="ap-note" style={{ borderColor: 'rgba(255,100,100,.35)', color: '#ff6464' }}>{state?.error || delState?.error}</div>
+      )}
+
+      {showForm && (
+        <form action={formAction} className="sc" style={{ padding: 22, maxWidth: 640, marginBottom: 18 }}>
+          {editing && <input type="hidden" name="id" value={editing.id} />}
+          <input type="hidden" name="brand_id" value={brandId} />
+          <input type="hidden" name="campaign_id" value={campId} />
+          <input type="hidden" name="status" value={status} />
+          <CField label="Title"><input style={cInp} name="title" defaultValue={editing?.title || ''} placeholder="e.g. Behind-the-bar matcha ritual reel" /></CField>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <CField label="Brand">
+              <select style={cInp} value={brandId} onChange={(e) => setBrandId(e.target.value)}>
+                {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </CField>
+            <CField label="Campaign (optional)">
+              <select style={cInp} value={campId} onChange={(e) => setCampId(e.target.value)}>
+                <option value="">— none —</option>
+                {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </CField>
+          </div>
+          <CField label="Notes"><textarea style={cTa(70)} name="notes" defaultValue={editing?.notes || ''} placeholder="The hook, the angle, why it matters." /></CField>
+          <CField label="Status">
+            <select style={cInp} value={status} onChange={(e) => setStatus(e.target.value)}>
+              <option value="new">New</option><option value="approved">Approved</option><option value="archived">Archived</option>
+            </select>
+          </CField>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button className="btn bl" type="submit" disabled={pending}>{pending ? 'Saving…' : editing ? 'Save' : 'Create idea'}</button>
+            <button className="btn bg" type="button" onClick={() => { setShowForm(false); setEditing(null); }}>Cancel</button>
+          </div>
+        </form>
+      )}
+
+      {ideas.length === 0 && !showForm ? (
+        <ComingSoon icon="◇" title="No ideas yet" body={isCommand ? 'Capture your first concept. Approve it and promote it to a brief to move it down the pipeline.' : 'No ideas captured for your brand yet.'} />
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 14 }}>
+          {ideas.map((i) => {
+            const b = brandById(i.brand_id);
+            const bc = b?.color || '#9494AA';
+            return (
+              <div key={i.id} className="sc" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
+                  <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 14, lineHeight: 1.3 }}>{i.title}</div>
+                  <Pill text={i.status} color={STATUS_COLOR[i.status] || '#9494AA'} />
+                </div>
+                <span style={{ alignSelf: 'flex-start', fontSize: 11, fontWeight: 600, color: bc, background: bc + '1c', padding: '2px 8px', borderRadius: 5 }}>{b?.name || 'Unassigned'}</span>
+                {i.notes && <div style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.5 }}>{i.notes}</div>}
+                {isCommand && (
+                  <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+                    <form action={promoteAction} style={{ display: 'inline' }}>
+                      <input type="hidden" name="idea_id" value={i.id} />
+                      <input type="hidden" name="brand_id" value={i.brand_id || ''} />
+                      <button className="btn bg" type="submit" disabled={promoting} style={{ fontSize: 12 }}>Promote to Brief →</button>
+                    </form>
+                    <button className="btn bg" style={{ fontSize: 12 }} onClick={() => openEdit(i)}>✎</button>
+                    <form action={deleteAction} style={{ display: 'inline' }}>
+                      <input type="hidden" name="id" value={i.id} />
+                      <button className="btn bg" type="submit" style={{ fontSize: 12, color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }}>🗑</button>
+                    </form>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------- BRIEFS
+function BriefsView({ briefs, ideas, brands, brandById, isCommand }) {
+  const [editing, setEditing] = useState(null); // brief being edited (or null)
+  const [state, formAction, pending] = useActionState(saveBrief, {});
+  const [, startAction, starting] = useActionState(startProduction, {});
+  const [delState, deleteAction] = useActionState(deleteBrief, {});
+  const [status, setStatus] = useState('draft');
+
+  useEffect(() => { if (state?.ok) setEditing(null); }, [state]);
+
+  const ideaTitle = (id) => ideas.find((x) => x.id === id)?.title;
+
+  if (editing) {
+    const b = editing;
+    return (
+      <>
+        <div className="ph">
+          <div><div className="pt">{b.id ? 'Edit brief' : 'New brief'}</div><div className="ps">Define what to make and for which channel</div></div>
+          <button className="btn bg" onClick={() => setEditing(null)}>← Back</button>
+        </div>
+        {state?.error && <div className="ap-note" style={{ borderColor: 'rgba(255,100,100,.35)', color: '#ff6464' }}>{state.error}</div>}
+        <form action={formAction} className="sc" style={{ padding: 22, maxWidth: 680 }}>
+          {b.id && <input type="hidden" name="id" value={b.id} />}
+          <input type="hidden" name="idea_id" value={b.idea_id || ''} />
+          <input type="hidden" name="status" value={status} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <CField label="Brand">
+              <select style={cInp} name="brand_id" defaultValue={b.brand_id || brands[0]?.id || ''}>
+                {brands.map((br) => <option key={br.id} value={br.id}>{br.name}</option>)}
+              </select>
+            </CField>
+            <CField label="Channel"><input style={cInp} name="channel" defaultValue={b.channel || ''} placeholder="Instagram, TikTok, YouTube…" /></CField>
+          </div>
+          <CField label="The brief"><textarea style={cTa(140)} name="brief" defaultValue={b.brief || ''} placeholder="Objective, key message, format, references, must-haves." /></CField>
+          <CField label="Status">
+            <select style={cInp} value={status} onChange={(e) => setStatus(e.target.value)}>
+              <option value="draft">Draft</option><option value="approved">Approved</option><option value="archived">Archived</option>
+            </select>
+          </CField>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button className="btn bl" type="submit" disabled={pending}>{pending ? 'Saving…' : 'Save brief'}</button>
+            <button className="btn bg" type="button" onClick={() => setEditing(null)}>Cancel</button>
+          </div>
+        </form>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div className="ph">
+        <div><div className="pt">Briefs</div><div className="ps">{briefs.length} briefs · turn approved ideas into a plan to produce</div></div>
+        {isCommand && <button className="btn bl" onClick={() => { setStatus('draft'); setEditing({}); }}>＋ New brief</button>}
       </div>
 
-      <div className="ctbl">
-        <div className="tblh">
-          <div className="th">Title</div>
-          <div className="th">Brand</div>
-          <div className="th">Status</div>
-          <div className="th">Owner</div>
-          <div className="th">Channel</div>
-          <div className="th">Due</div>
+      {(state?.error || delState?.error) && (
+        <div className="ap-note" style={{ borderColor: 'rgba(255,100,100,.35)', color: '#ff6464' }}>{state?.error || delState?.error}</div>
+      )}
+
+      {briefs.length === 0 ? (
+        <ComingSoon icon="▢" title="No briefs yet" body={isCommand ? 'Promote an idea from the Ideas tab, or create a brief directly. Approve it and send it to Production.' : 'No briefs for your brand yet.'} />
+      ) : (
+        <div style={{ display: 'grid', gap: 12 }}>
+          {briefs.map((b) => {
+            const br = brandById(b.brand_id);
+            const bc = br?.color || '#9494AA';
+            const fromIdea = ideaTitle(b.idea_id);
+            return (
+              <div key={b.id} className="sc" style={{ padding: 16, display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+                <div style={{ width: 6, alignSelf: 'stretch', borderRadius: 4, background: bc, flex: '0 0 6px' }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: bc }}>{br?.name || 'Unassigned'}</span>
+                    {b.channel && <span style={{ fontSize: 12, color: 'var(--text3)' }}>· {b.channel}</span>}
+                    <Pill text={b.status} color={STATUS_COLOR[b.status] || '#9494AA'} />
+                  </div>
+                  {fromIdea && <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>From idea: {fromIdea}</div>}
+                  <div style={{ fontSize: 13, color: b.brief ? 'var(--text)' : 'var(--text3)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{b.brief || 'No brief written yet.'}</div>
+                </div>
+                {isCommand && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: '0 0 auto' }}>
+                    <form action={startAction}>
+                      <input type="hidden" name="brief_id" value={b.id} />
+                      <input type="hidden" name="brand_id" value={b.brand_id || ''} />
+                      <input type="hidden" name="title" value={fromIdea || 'Untitled'} />
+                      <button className="btn bg" type="submit" disabled={starting} style={{ fontSize: 12, whiteSpace: 'nowrap' }}>Start Production →</button>
+                    </form>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button className="btn bg" style={{ fontSize: 12, flex: 1 }} onClick={() => { setStatus(b.status || 'draft'); setEditing(b); }}>✎</button>
+                      <form action={deleteAction} style={{ flex: 1 }}>
+                        <input type="hidden" name="id" value={b.id} />
+                        <button className="btn bg" type="submit" style={{ fontSize: 12, width: '100%', color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }}>🗑</button>
+                      </form>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
-        {rows.length === 0 && (
-          <div style={{ padding: 30, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>No items.</div>
-        )}
-        {rows.map((r) => {
-          const s = STAT[r.status] || STAT.briefed;
-          const bc = brandColor(r.brand);
+      )}
+    </>
+  );
+}
+
+// ------------------------------------------------------------ PRODUCTION
+function ProductionView({ content, briefs, brands, campaigns, brandById, isCommand }) {
+  const [editing, setEditing] = useState(null);
+  const [state, formAction, pending] = useActionState(saveContent, {});
+  const [, statusAction] = useActionState(setContentStatus, {});
+  const [delState, deleteAction] = useActionState(deleteContent, {});
+
+  useEffect(() => { if (state?.ok) setEditing(null); }, [state]);
+
+  const COLS = [
+    { id: 'in_production', label: 'In Production', color: '#ffbb44' },
+    { id: 'review', label: 'In Review', color: '#78b8e8' },
+    { id: 'approved', label: 'Approved', color: '#64BC46' },
+  ];
+  const nextOf = { in_production: 'review', review: 'approved' };
+  const prevOf = { review: 'in_production', approved: 'review' };
+
+  if (editing) {
+    const c = editing;
+    return (
+      <>
+        <div className="ph">
+          <div><div className="pt">{c.id ? 'Edit content' : 'New content'}</div><div className="ps">A piece being produced from a brief</div></div>
+          <button className="btn bg" onClick={() => setEditing(null)}>← Back</button>
+        </div>
+        {state?.error && <div className="ap-note" style={{ borderColor: 'rgba(255,100,100,.35)', color: '#ff6464' }}>{state.error}</div>}
+        <form action={formAction} className="sc" style={{ padding: 22, maxWidth: 680 }}>
+          {c.id && <input type="hidden" name="id" value={c.id} />}
+          <CField label="Title"><input style={cInp} name="title" defaultValue={c.title || ''} placeholder="What is this piece?" /></CField>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <CField label="Brand">
+              <select style={cInp} name="brand_id" defaultValue={c.brand_id || brands[0]?.id || ''}>
+                {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </CField>
+            <CField label="Status">
+              <select style={cInp} name="status" defaultValue={c.status || 'in_production'}>
+                <option value="in_production">In Production</option><option value="review">In Review</option><option value="approved">Approved</option>
+              </select>
+            </CField>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <CField label="From brief (optional)">
+              <select style={cInp} name="brief_id" defaultValue={c.brief_id || ''}>
+                <option value="">— none —</option>
+                {briefs.map((b) => <option key={b.id} value={b.id}>{(brandById(b.brand_id)?.name || '?')}{b.channel ? ' · ' + b.channel : ''}</option>)}
+              </select>
+            </CField>
+            <CField label="Campaign (optional)">
+              <select style={cInp} name="campaign_id" defaultValue={c.campaign_id || ''}>
+                <option value="">— none —</option>
+                {campaigns.map((cm) => <option key={cm.id} value={cm.id}>{cm.name}</option>)}
+              </select>
+            </CField>
+          </div>
+          <CField label="Body / copy"><textarea style={cTa(140)} name="body" defaultValue={c.body || ''} placeholder="Caption, script, or working copy." /></CField>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button className="btn bl" type="submit" disabled={pending}>{pending ? 'Saving…' : 'Save'}</button>
+            <button className="btn bg" type="button" onClick={() => setEditing(null)}>Cancel</button>
+          </div>
+        </form>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div className="ph">
+        <div><div className="pt">Production</div><div className="ps">{content.length} items in production · move work to review and approval</div></div>
+        {isCommand && <button className="btn bl" onClick={() => setEditing({})}>＋ New content</button>}
+      </div>
+
+      {(state?.error || delState?.error) && (
+        <div className="ap-note" style={{ borderColor: 'rgba(255,100,100,.35)', color: '#ff6464' }}>{state?.error || delState?.error}</div>
+      )}
+
+      <div className="ap-board">
+        {COLS.map((col) => {
+          const items = content.filter((c) => c.status === col.id);
           return (
-            <div className="tr" key={r.id}>
-              <div className="tdt">{r.title}</div>
-              <div className="td"><span className="sb2" style={{ background: bc + '22', color: bc }}>{r.brand}</span></div>
-              <div className="td"><span className={`sb2 ${s.c}`}>{s.label}</span></div>
-              <div className="td">{r.owner_name || '—'}</div>
-              <div className="td">{r.channel || '—'}</div>
-              <div className="td">{r.due_date || '—'}</div>
+            <div className="ap-col" key={col.id}>
+              <div className="ap-col-hd">
+                <span className="ap-col-dot" style={{ background: col.color }} />
+                <span className="ap-col-t" style={{ color: col.color }}>{col.label}</span>
+                <span className="ap-col-n">{items.length}</span>
+              </div>
+              <div className="ap-col-bd">
+                {items.length === 0 && <div className="ap-empty">—</div>}
+                {items.map((i) => {
+                  const b = brandById(i.brand_id);
+                  const bc = b?.color || '#9494AA';
+                  return (
+                    <div className="ap-card" key={i.id}>
+                      <div className="ap-card-t">{i.title}</div>
+                      {i.body && <div style={{ fontSize: 11, color: 'var(--text3)', margin: '4px 0', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{i.body}</div>}
+                      <div className="ap-card-m"><span className="ap-chip" style={{ background: bc + '22', color: bc }}>{b?.name || 'Unassigned'}</span></div>
+                      {isCommand && (
+                        <div style={{ display: 'flex', gap: 5, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                          {prevOf[i.status] && (
+                            <form action={statusAction}><input type="hidden" name="id" value={i.id} /><input type="hidden" name="status" value={prevOf[i.status]} />
+                              <button className="btn bg" type="submit" style={{ fontSize: 11, padding: '3px 7px' }}>←</button></form>
+                          )}
+                          {nextOf[i.status] && (
+                            <form action={statusAction}><input type="hidden" name="id" value={i.id} /><input type="hidden" name="status" value={nextOf[i.status]} />
+                              <button className="btn bg" type="submit" style={{ fontSize: 11, padding: '3px 7px', color: col.color === '#64BC46' ? undefined : '#64BC46' }}>Advance →</button></form>
+                          )}
+                          <button className="btn bg" style={{ fontSize: 11, padding: '3px 7px' }} onClick={() => setEditing(i)}>✎</button>
+                          <form action={deleteAction}><input type="hidden" name="id" value={i.id} />
+                            <button className="btn bg" type="submit" style={{ fontSize: 11, padding: '3px 7px', color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }}>🗑</button></form>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           );
         })}
