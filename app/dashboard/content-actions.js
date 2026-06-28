@@ -35,6 +35,19 @@ async function writeBack(query) {
 }
 
 // ---------------------------------------------------------------- IDEAS
+function isoDate(v) {
+  const s = (v || '').toString().trim();
+  return s ? s : null;
+}
+// Returns YYYY-MM-DD that is `days` before the given YYYY-MM-DD, or null.
+function dueBefore(publish, days) {
+  if (!publish) return null;
+  const d = new Date(publish + 'T00:00:00Z');
+  if (isNaN(d)) return null;
+  d.setUTCDate(d.getUTCDate() - days);
+  return d.toISOString().slice(0, 10);
+}
+
 export async function saveIdea(prevState, formData) {
   const id = nz(formData.get('id'));
   const title = nz(formData.get('title'));
@@ -48,6 +61,9 @@ export async function saveIdea(prevState, formData) {
   const caption = nz(formData.get('caption'));
   const hashtags = nz(formData.get('hashtags'));
   const mandatories = nz(formData.get('mandatories'));
+  const publish_date = isoDate(formData.get('publish_date'));
+  const production_due = dueBefore(publish_date, 5);
+  const edit_due = dueBefore(publish_date, 3);
   let status = nz(formData.get('status')) || 'new';
   if (!IDEA_STATUS.includes(status)) status = 'new';
 
@@ -57,7 +73,8 @@ export async function saveIdea(prevState, formData) {
   const supabase = await createClient();
   const payload = {
     title, brand_id, campaign_id, pillar, channel, format,
-    notes, hook, caption, hashtags, mandatories, status,
+    notes, hook, caption, hashtags, mandatories,
+    publish_date, production_due, edit_due, status,
   };
   const q = id
     ? supabase.from('ideas').update(payload).eq('id', id)
@@ -89,7 +106,7 @@ export async function promoteIdeaToBrief(prevState, formData) {
   // Pull the idea so we can copy its detail into the brief.
   const { data: idea } = await supabase
     .from('ideas')
-    .select('channel, format, notes, hook, caption, hashtags, mandatories')
+    .select('channel, format, notes, hook, caption, hashtags, mandatories, publish_date, production_due, edit_due')
     .eq('id', idea_id)
     .single();
 
@@ -107,6 +124,9 @@ export async function promoteIdeaToBrief(prevState, formData) {
       caption: idea?.caption || null,
       hashtags: idea?.hashtags || null,
       mandatories: idea?.mandatories || null,
+      publish_date: idea?.publish_date || null,
+      production_due: idea?.production_due || null,
+      edit_due: idea?.edit_due || null,
       references: [],
       attachments: [],
       status: 'draft',
@@ -128,6 +148,9 @@ export async function saveBrief(prevState, formData) {
   const caption = nz(formData.get('caption'));
   const hashtags = nz(formData.get('hashtags'));
   const mandatories = nz(formData.get('mandatories'));
+  const publish_date = isoDate(formData.get('publish_date'));
+  const production_due = dueBefore(publish_date, 5);
+  const edit_due = dueBefore(publish_date, 3);
   let status = nz(formData.get('status')) || 'draft';
   if (!BRIEF_STATUS.includes(status)) status = 'draft';
 
@@ -164,6 +187,7 @@ export async function saveBrief(prevState, formData) {
   const payload = {
     brand_id, idea_id, channel, format, brief,
     hook, caption, hashtags, mandatories,
+    publish_date, production_due, edit_due,
     references, attachments, status,
   };
   const q = id
