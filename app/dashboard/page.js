@@ -23,9 +23,15 @@ export default async function DashboardPage() {
   const { data: content } = await supabase
     .from('content_items')
     .select(
-      'id, title, brand, status, owner_name, due_date, channel, publish_at, reach, engagement, ctr, conversions, revenue'
+      'id, title, brand, status, owner_name, due_date, channel, publish_at, reach, engagement, ctr, conversions, revenue, campaign_id'
     )
     .order('created_at', { ascending: true });
+
+  // Load campaigns. RLS scopes these (command sees all, freelancers see one).
+  const { data: campaigns } = await supabase
+    .from('campaigns')
+    .select('id, brand_id, name, goal, status, starts_on, ends_on')
+    .order('created_at', { ascending: false });
 
   // Load brands. RLS scopes these too (command sees all, freelancers see one).
   const { data: brands } = await supabase
@@ -47,6 +53,7 @@ export default async function DashboardPage() {
       email={user.email}
       content={content || []}
       brands={brands || []}
+      campaigns={campaigns || []}
     />
   );
 }
