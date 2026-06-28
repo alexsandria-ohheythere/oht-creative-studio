@@ -948,12 +948,14 @@ function BrandCenter({ brands, isCommand, content }) {
           const pal = bb.palette || {};
           const palEntries = Object.entries(pal).filter(([, v]) => v);
           const gal = bb.gallery || [];
-          if (palEntries.length === 0 && gal.length === 0) return null;
           const labelFor = (k) => k === 'black' ? 'Black' : k === 'white' ? 'White' : k.toUpperCase();
           return (
             <div className="card" style={{ marginBottom: 18 }}>
               <div className="ch"><div className="ct">Palette & References</div></div>
               <div className="cb">
+                {palEntries.length === 0 && gal.length === 0 && (
+                  <div style={{ fontSize: 12, color: 'var(--text3)' }}>No palette colors or reference images yet.</div>
+                )}
                 {palEntries.length > 0 && (
                   <div style={{ marginBottom: gal.length ? 18 : 0 }}>
                     <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text3)', marginBottom: 8 }}>Color Palette</div>
@@ -986,15 +988,18 @@ function BrandCenter({ brands, isCommand, content }) {
           );
         })()}
 
-        {/* Extended brand profile sections (from brand_book) */}
+        {/* Extended brand profile sections (from brand_book).
+            Read-only view of the full Brand Brain — every section and field
+            always shows, even when empty, so non-command users (e.g. Tali)
+            can see the complete structure. Empty fields render "Not set". */}
         {(() => {
           const bb = open.brand_book || {};
           const sec = (label, value) => {
-            if (!value) return null;
+            const filled = value && value.trim();
             return (
-              <div style={{ marginBottom: 14 }}>
+              <div style={{ marginBottom: 14 }} key={label}>
                 <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text3)', marginBottom: 4 }}>{label}</div>
-                <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{value}</div>
+                <div style={{ fontSize: 13, color: filled ? 'var(--text)' : 'var(--text3)', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{filled ? value : 'Not set'}</div>
               </div>
             );
           };
@@ -1027,16 +1032,12 @@ function BrandCenter({ brands, isCommand, content }) {
               ['AI Prompt Examples', bb.ai_prompts],
             ]],
           ];
-          return groups.map(([title, rows]) => {
-            const visible = rows.filter(([, v]) => v && v.trim());
-            if (visible.length === 0) return null;
-            return (
-              <div className="card" style={{ marginBottom: 18 }} key={title}>
-                <div className="ch"><div className="ct">{title}</div></div>
-                <div className="cb">{visible.map(([l, v]) => sec(l, v))}</div>
-              </div>
-            );
-          });
+          return groups.map(([title, rows]) => (
+            <div className="card" style={{ marginBottom: 18 }} key={title}>
+              <div className="ch"><div className="ct">{title}</div></div>
+              <div className="cb">{rows.map(([l, v]) => sec(l, v))}</div>
+            </div>
+          ));
         })()}
 
         {/* Visual Assets (attachments from the Visual tab) */}
@@ -1051,7 +1052,6 @@ function BrandCenter({ brands, isCommand, content }) {
           const pkgImgs = bb.packaging_images || [];
           const photoCats = Object.entries(photos).filter(([, arr]) => (arr || []).length);
           const hasAny = sgPdf || logoImgs.length || fonts.length || covers.length || vrefs.length || photoCats.length || pkgImgs.length;
-          if (!hasAny) return null;
           const subhead = (t) => <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text3)', marginBottom: 8 }}>{t}</div>;
           const thumbs = (arr) => (
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -1071,6 +1071,7 @@ function BrandCenter({ brands, isCommand, content }) {
             <div className="card" style={{ marginBottom: 18 }}>
               <div className="ch"><div className="ct">Visual Assets</div></div>
               <div className="cb" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                {!hasAny && <div style={{ fontSize: 12, color: 'var(--text3)' }}>No files uploaded yet.</div>}
                 {sgPdf && <div>{subhead('Style Guideline PDF')}{linkRow([sgPdf], '📄')}</div>}
                 {logoImgs.length > 0 && <div>{subhead('Logo Files')}{thumbs(logoImgs)}</div>}
                 {fonts.length > 0 && <div>{subhead('Font Files')}{linkRow(fonts, '🔤')}</div>}
@@ -1113,7 +1114,7 @@ function BrandCenter({ brands, isCommand, content }) {
             <div className="card" style={{ marginBottom: 18 }}>
               <div className="ch"><div className="ct">Caption Playbook</div><span style={{ fontSize: 11, color: 'var(--text3)' }}>feeds Line-Up</span></div>
               <div className="cb">
-                {!hasAny && <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 10 }}>Not configured yet — click Edit to set caption structure, CTAs, hashtags & vocabulary.</div>}
+                {!hasAny && <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 10 }}>{isCommand ? 'Not configured yet — click Edit to set caption structure, CTAs, hashtags & vocabulary.' : 'Not configured yet.'}</div>}
                 <div style={{ marginBottom: 10 }}>
                   <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text3)', marginBottom: 3 }}>Caption Structure</div>
                   <div style={{ fontSize: 13, color: bb.caption_structure ? 'var(--text)' : 'var(--text3)' }}>{bb.caption_structure || 'Not set'}</div>
