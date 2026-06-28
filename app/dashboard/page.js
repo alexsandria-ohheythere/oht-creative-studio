@@ -18,14 +18,23 @@ export default async function DashboardPage() {
     .eq('id', user.id)
     .single();
 
-  // Load content. RLS does the real scoping: command sees all,
-  // freelancers only get their brand's rows. No client-side filtering needed.
+  // Load content items with the REAL columns that exist on the live table.
+  // (The old select referenced owner_name/reach/etc. which don't exist.)
   const { data: content } = await supabase
     .from('content_items')
-    .select(
-      'id, title, brand, status, owner_name, due_date, channel, publish_at, reach, engagement, ctr, conversions, revenue, campaign_id'
-    )
-    .order('created_at', { ascending: true });
+    .select('id, brand_id, brief_id, campaign_id, title, body, status, created_at')
+    .order('created_at', { ascending: false });
+
+  // Pipeline upstream: ideas and briefs.
+  const { data: ideas } = await supabase
+    .from('ideas')
+    .select('id, brand_id, campaign_id, title, notes, status, created_at')
+    .order('created_at', { ascending: false });
+
+  const { data: briefs } = await supabase
+    .from('briefs')
+    .select('id, brand_id, idea_id, channel, brief, status, created_at')
+    .order('created_at', { ascending: false });
 
   // Load campaigns. RLS scopes these (command sees all, freelancers see one).
   const { data: campaigns } = await supabase
@@ -52,6 +61,8 @@ export default async function DashboardPage() {
       profile={safeProfile}
       email={user.email}
       content={content || []}
+      ideas={ideas || []}
+      briefs={briefs || []}
       brands={brands || []}
       campaigns={campaigns || []}
     />
