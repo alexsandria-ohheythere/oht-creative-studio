@@ -401,7 +401,7 @@ function Campaigns({ isCommand, campaigns = [], content = [], brands = [], brand
     const field = (label, value) => (
       <div style={{ marginBottom: 14 }}>
         <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text3)', marginBottom: 3 }}>{label}</div>
-        <div style={{ fontSize: 13, color: value ? 'var(--text)' : 'var(--text3)', lineHeight: 1.5 }}>{value || 'Not set'}</div>
+        <div style={{ fontSize: 13, color: value ? 'var(--text)' : 'var(--text3)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{value || 'Not set'}</div>
       </div>
     );
     return (
@@ -881,7 +881,7 @@ function BrandCenter({ brands, isCommand, content }) {
     const field = (label, value) => (
       <div style={{ marginBottom: 12 }}>
         <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text3)', marginBottom: 3 }}>{label}</div>
-        <div style={{ fontSize: 13, color: value ? 'var(--text)' : 'var(--text3)', lineHeight: 1.5 }}>{value || 'Not set'}</div>
+        <div style={{ fontSize: 13, color: value ? 'var(--text)' : 'var(--text3)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{value || 'Not set'}</div>
       </div>
     );
     return (
