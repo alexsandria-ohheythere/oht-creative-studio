@@ -2,11 +2,11 @@
   "nav": [
     { "id": "dash", "label": "Dashboard", "icon": "⊞", "section": "Overview", "roles": ["command", "freelance"] },
 
-    { "id": "brain", "label": "Brand Brain", "icon": "◈", "section": "Creative OS", "roles": ["command", "freelance"], "accent": "#EE268C" },
+    { "id": "brain", "label": "Brand Brain", "icon": "◈", "section": "Foundation", "roles": ["command", "freelance"], "accent": "#EE268C" },
 
-    { "id": "camp", "label": "Campaigns", "icon": "◇", "section": "Creative OS", "roles": ["command"], "accent": "#FFAEF1" },
+    { "id": "camp", "label": "Campaigns", "icon": "◇", "section": "Social Media", "roles": ["command"], "accent": "#FFAEF1" },
 
-    { "id": "content", "label": "Content", "icon": "▣", "section": "Creative OS", "roles": ["command", "freelance"], "accent": "#64BC46",
+    { "id": "content", "label": "Content", "icon": "▣", "section": "Social Media", "roles": ["command", "freelance"], "accent": "#64BC46",
       "children": [
         { "id": "content.ideas", "label": "Ideas" },
         { "id": "content.briefs", "label": "Briefs" },
@@ -15,14 +15,14 @@
       ]
     },
 
-    { "id": "publishing", "label": "Publishing", "icon": "⊛", "section": "Creative OS", "roles": ["command"], "accent": "#AED8FF",
+    { "id": "publishing", "label": "Publishing", "icon": "⊛", "section": "Social Media", "roles": ["command"], "accent": "#AED8FF",
       "children": [
         { "id": "publishing.calendar", "label": "Calendar" },
         { "id": "publishing.channels", "label": "Channels" }
       ]
     },
 
-    { "id": "insights", "label": "Insights", "icon": "◉", "section": "Creative OS", "roles": ["command"], "accent": "#DDEE26",
+    { "id": "insights", "label": "Insights", "icon": "◉", "section": "Social Media", "roles": ["command"], "accent": "#DDEE26",
       "children": [
         { "id": "insights.performance", "label": "Performance" },
         { "id": "insights.audience", "label": "Audience" },
@@ -30,7 +30,7 @@
       ]
     },
 
-    { "id": "strategist", "label": "AI Strategist", "icon": "✦", "section": "Creative OS", "roles": ["command"], "accent": "#DDEE26", "flagship": true }
+    { "id": "strategist", "label": "AI Strategist", "icon": "✦", "section": "Social Media", "roles": ["command"], "accent": "#DDEE26", "flagship": true }
   ],
   "statuses": [
     { "id": "briefed", "label": "Briefed", "color": "#9494AA" },
