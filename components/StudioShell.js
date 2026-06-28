@@ -21,9 +21,32 @@ function initials(name = '') {
 export default function StudioShell({ profile, email, content, brands = [], campaigns = [] }) {
   const role = profile.role === 'command' ? 'command' : 'freelance';
   const visibleNav = NAV.filter((n) => n.roles.includes(role));
+
+  // Every navigable id (parents + children) — used to validate the URL hash.
+  const validIds = new Set();
+  NAV.forEach((n) => {
+    validIds.add(n.id);
+    (n.children || []).forEach((c) => validIds.add(c.id));
+  });
+  const idFromHash = () => {
+    if (typeof window === 'undefined') return 'dash';
+    const h = decodeURIComponent(window.location.hash.replace(/^#/, '')).trim();
+    return validIds.has(h) ? h : 'dash';
+  };
+
   const [active, setActive] = useState('dash');
   const [drawer, setDrawer] = useState(false);
   const [openGroups, setOpenGroups] = useState({}); // expandable sub-nav
+
+  // On mount, adopt the section named in the URL hash so a refresh or a
+  // shared/bookmarked link (e.g. /dashboard#camp) lands on the right module.
+  useEffect(() => {
+    setActive(idFromHash());
+    const onHash = () => setActive(idFromHash());
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const sections = [...new Set(visibleNav.map((n) => n.section))];
   const isCommand = role === 'command';
@@ -39,6 +62,13 @@ export default function StudioShell({ profile, email, content, brands = [], camp
   function go(id) {
     setActive(id);
     setDrawer(false);
+    // Reflect the section in the URL so refresh/back/forward keep your place.
+    if (typeof window !== 'undefined') {
+      const target = `#${id}`;
+      if (window.location.hash !== target) {
+        window.history.pushState(null, '', target);
+      }
+    }
   }
   function toggleGroup(id, e) {
     e.stopPropagation();
