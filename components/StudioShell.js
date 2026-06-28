@@ -731,13 +731,17 @@ function Strategist({ content, brands }) {
 }
 
 // Reusable "next build" panel — styled, honest about state.
-function ComingSoon({ icon, title, body }) {
+function ComingSoon({ icon, title, body, actionLabel, onAction }) {
   return (
     <div className="soon-card">
       <div className="soon-ic">{icon}</div>
       <div className="soon-t">{title}</div>
       <div className="soon-b">{body}</div>
-      <div className="soon-tag">Coming in next build</div>
+      {actionLabel && onAction ? (
+        <button className="btn bl" onClick={onAction} style={{ marginTop: 16 }}>{actionLabel}</button>
+      ) : (
+        <div className="soon-tag">Coming in next build</div>
+      )}
     </div>
   );
 }
@@ -1648,7 +1652,7 @@ function IdeasView({ ideas, brands, campaigns, brandById, isCommand }) {
       )}
 
       {ideas.length === 0 && !showForm ? (
-        <ComingSoon icon="◇" title="No ideas yet" body={isCommand ? 'Capture your first concept. Pick a campaign pillar, choose a channel and format, write the hook and caption — then promote it to a brief.' : 'No ideas captured for your brand yet.'} />
+        <ComingSoon icon="◇" title="No ideas yet" body={isCommand ? 'Capture your first concept. Pick a campaign pillar, choose a channel and format, write the hook and caption — then promote it to a brief.' : 'No ideas captured for your brand yet.'} actionLabel={isCommand ? '＋ New idea' : undefined} onAction={isCommand ? openNew : undefined} />
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 14 }}>
           {ideas.map((i) => {
@@ -1722,6 +1726,11 @@ function BriefsView({ briefs, ideas, brands, brandById, isCommand }) {
     setPublishDate(b.publish_date || '');
     setAttachments(Array.isArray(b.attachments) ? b.attachments : []);
     setUploadErr('');
+  }
+
+  function openNewBrief() {
+    setStatus('draft'); setChannel(''); setFormat(''); setPublishDate('');
+    setAttachments([]); setUploadErr(''); setEditing({});
   }
 
   async function handleUpload(e) {
@@ -1848,7 +1857,7 @@ function BriefsView({ briefs, ideas, brands, brandById, isCommand }) {
     <>
       <div className="ph">
         <div><div className="pt">Briefs</div><div className="ps">{briefs.length} briefs · turn approved ideas into a plan to produce</div></div>
-        {isCommand && <button className="btn bl" onClick={() => { setStatus('draft'); setChannel(''); setFormat(''); setPublishDate(''); setAttachments([]); setUploadErr(''); setEditing({}); }}>＋ New brief</button>}
+        {isCommand && <button className="btn bl" onClick={openNewBrief}>＋ New brief</button>}
       </div>
 
       {(state?.error || delState?.error) && (
@@ -1856,7 +1865,7 @@ function BriefsView({ briefs, ideas, brands, brandById, isCommand }) {
       )}
 
       {briefs.length === 0 ? (
-        <ComingSoon icon="▢" title="No briefs yet" body={isCommand ? 'Promote an idea from the Ideas tab, or create a brief directly. Approve it and send it to Production.' : 'No briefs for your brand yet.'} />
+        <ComingSoon icon="▢" title="No briefs yet" body={isCommand ? 'Promote an idea from the Ideas tab, or create a brief directly. Approve it and send it to Production.' : 'No briefs for your brand yet.'} actionLabel={isCommand ? '＋ New brief' : undefined} onAction={isCommand ? openNewBrief : undefined} />
       ) : (
         <div style={{ display: 'grid', gap: 12 }}>
           {briefs.map((b) => {
