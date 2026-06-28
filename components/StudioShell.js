@@ -264,6 +264,65 @@ const CHANNEL_COLOR = {
   Facebook: '#AED8FF', YouTube: '#64BC46', Blog: '#DDEE26',
 };
 
+// Compute a YYYY-MM-DD that is `days` before a publish date (for live preview).
+function dueBeforeClient(publish, days) {
+  if (!publish) return null;
+  const d = new Date(publish + 'T00:00:00Z');
+  if (isNaN(d)) return null;
+  d.setUTCDate(d.getUTCDate() - days);
+  return d.toISOString().slice(0, 10);
+}
+function prettyDate(d) {
+  if (!d) return '—';
+  const dt = new Date(d + 'T00:00:00');
+  if (isNaN(dt)) return d;
+  return dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+// Compact read-only row of the three dates, shown on idea/brief cards.
+function DateRow({ publish, production, edit }) {
+  if (!publish && !production && !edit) return null;
+  const item = (label, value, color) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+      <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text3)' }}>{label}</span>
+      <span style={{ fontSize: 11, fontWeight: 600, color }}>{prettyDate(value)}</span>
+    </div>
+  );
+  return (
+    <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', padding: '8px 10px', borderRadius: 6, background: 'var(--bg3)' }}>
+      {item('Publish', publish, 'var(--text)')}
+      {item('Production due', production, '#ffbb44')}
+      {item('Edit due', edit, '#78b8e8')}
+    </div>
+  );
+}
+
+// Live preview of the two auto-computed due dates under a publish-date input.
+function DueDatePreview({ publish }) {
+  if (!publish) {
+    return (
+      <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 8, lineHeight: 1.5 }}>
+        Set a publish date and the due dates below are calculated automatically.
+      </div>
+    );
+  }
+  const prod = dueBeforeClient(publish, 5);
+  const edit = dueBeforeClient(publish, 3);
+  const chip = (label, value, color) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 6, background: 'var(--bg3)' }}>
+      <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, flex: '0 0 7px' }} />
+      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.05em' }}>{label}</span>
+      <span style={{ fontSize: 12, color: 'var(--text)', marginLeft: 'auto' }}>{prettyDate(value)}</span>
+    </div>
+  );
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+      {chip('Production Due · 5 days before', prod, '#ffbb44')}
+      {chip('Edit Due · 3 days before', edit, '#78b8e8')}
+    </div>
+  );
+}
+
 function fmtDate(d) {
   if (!d) return null;
   const dt = new Date(d + 'T00:00:00');
@@ -1463,6 +1522,7 @@ function IdeasView({ ideas, brands, campaigns, brandById, isCommand }) {
   const [pillar, setPillar] = useState('');
   const [channel, setChannel] = useState('');
   const [format, setFormat] = useState('');
+  const [publishDate, setPublishDate] = useState('');
   const [status, setStatus] = useState('new');
 
   useEffect(() => { if (state?.ok) { setShowForm(false); setEditing(null); } }, [state]);
@@ -1475,7 +1535,7 @@ function IdeasView({ ideas, brands, campaigns, brandById, isCommand }) {
   function openNew() {
     setEditing(null);
     setBrandId(brands[0]?.id || '');
-    setCampId(''); setPillar(''); setChannel(''); setFormat(''); setStatus('new');
+    setCampId(''); setPillar(''); setChannel(''); setFormat(''); setPublishDate(''); setStatus('new');
     setShowForm(true);
   }
   function openEdit(i) {
@@ -1485,6 +1545,7 @@ function IdeasView({ ideas, brands, campaigns, brandById, isCommand }) {
     setPillar(i.pillar || '');
     setChannel(i.channel || '');
     setFormat(i.format || '');
+    setPublishDate(i.publish_date || '');
     setStatus(i.status || 'new');
     setShowForm(true);
   }
@@ -1511,6 +1572,7 @@ function IdeasView({ ideas, brands, campaigns, brandById, isCommand }) {
           <input type="hidden" name="pillar" value={pillar} />
           <input type="hidden" name="channel" value={channel} />
           <input type="hidden" name="format" value={format} />
+          <input type="hidden" name="publish_date" value={publishDate} />
           <input type="hidden" name="status" value={status} />
 
           <CField label="Title"><input style={cInp} name="title" defaultValue={editing?.title || ''} placeholder="e.g. Behind-the-bar matcha ritual reel" /></CField>
@@ -1562,6 +1624,11 @@ function IdeasView({ ideas, brands, campaigns, brandById, isCommand }) {
             </CField>
           </div>
 
+          <CField label="Publish Date">
+            <input style={cInp} type="date" value={publishDate} onChange={(e) => setPublishDate(e.target.value)} />
+            <DueDatePreview publish={publishDate} />
+          </CField>
+
           <CField label="Hook"><textarea style={cTa(60)} name="hook" defaultValue={editing?.hook || ''} placeholder="The scroll-stopper. First line / first 2 seconds." /></CField>
           <CField label="Caption"><textarea style={cTa(90)} name="caption" defaultValue={editing?.caption || ''} placeholder="The full caption copy." /></CField>
           <CField label="Hashtags"><textarea style={cTa(50)} name="hashtags" defaultValue={editing?.hashtags || ''} placeholder="#matcha #specialtytea #ohheythere" /></CField>
@@ -1603,6 +1670,7 @@ function IdeasView({ ideas, brands, campaigns, brandById, isCommand }) {
                 {i.hook && <div style={{ fontSize: 12, color: 'var(--text)', lineHeight: 1.5 }}><b style={{ color: 'var(--text3)', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em' }}>Hook</b><br />{i.hook}</div>}
                 {i.caption && <div style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{i.caption}</div>}
                 {i.hashtags && <div style={{ fontSize: 11, color: cc, lineHeight: 1.4 }}>{i.hashtags}</div>}
+                <DateRow publish={i.publish_date} production={i.production_due} edit={i.edit_due} />
                 {i.notes && !i.hook && !i.caption && <div style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.5 }}>{i.notes}</div>}
                 {isCommand && (
                   <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
@@ -1636,6 +1704,7 @@ function BriefsView({ briefs, ideas, brands, brandById, isCommand }) {
   const [status, setStatus] = useState('draft');
   const [channel, setChannel] = useState('');
   const [format, setFormat] = useState('');
+  const [publishDate, setPublishDate] = useState('');
   const [attachments, setAttachments] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [uploadErr, setUploadErr] = useState('');
@@ -1650,6 +1719,7 @@ function BriefsView({ briefs, ideas, brands, brandById, isCommand }) {
     setStatus(b.status || 'draft');
     setChannel(b.channel || '');
     setFormat(b.format || '');
+    setPublishDate(b.publish_date || '');
     setAttachments(Array.isArray(b.attachments) ? b.attachments : []);
     setUploadErr('');
   }
@@ -1693,6 +1763,7 @@ function BriefsView({ briefs, ideas, brands, brandById, isCommand }) {
           <input type="hidden" name="status" value={status} />
           <input type="hidden" name="channel" value={channel} />
           <input type="hidden" name="format" value={format} />
+          <input type="hidden" name="publish_date" value={publishDate} />
           <input type="hidden" name="attachments" value={JSON.stringify(attachments)} />
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
@@ -1722,6 +1793,11 @@ function BriefsView({ briefs, ideas, brands, brandById, isCommand }) {
               </select>
             </CField>
           </div>
+
+          <CField label="Publish Date">
+            <input style={cInp} type="date" value={publishDate} onChange={(e) => setPublishDate(e.target.value)} />
+            <DueDatePreview publish={publishDate} />
+          </CField>
 
           <CField label="The brief"><textarea style={cTa(140)} name="brief" defaultValue={b.brief || ''} placeholder="Objective, key message, structure, shot list, must-haves." /></CField>
           <CField label="Hook"><textarea style={cTa(55)} name="hook" defaultValue={b.hook || ''} placeholder="The scroll-stopper." /></CField>
@@ -1772,7 +1848,7 @@ function BriefsView({ briefs, ideas, brands, brandById, isCommand }) {
     <>
       <div className="ph">
         <div><div className="pt">Briefs</div><div className="ps">{briefs.length} briefs · turn approved ideas into a plan to produce</div></div>
-        {isCommand && <button className="btn bl" onClick={() => { setStatus('draft'); setChannel(''); setFormat(''); setAttachments([]); setUploadErr(''); setEditing({}); }}>＋ New brief</button>}
+        {isCommand && <button className="btn bl" onClick={() => { setStatus('draft'); setChannel(''); setFormat(''); setPublishDate(''); setAttachments([]); setUploadErr(''); setEditing({}); }}>＋ New brief</button>}
       </div>
 
       {(state?.error || delState?.error) && (
@@ -1804,6 +1880,7 @@ function BriefsView({ briefs, ideas, brands, brandById, isCommand }) {
                   <div style={{ fontSize: 13, color: b.brief ? 'var(--text)' : 'var(--text3)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{b.brief || 'No brief written yet.'}</div>
                   {b.hook && <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8 }}><b style={{ color: 'var(--text3)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em' }}>Hook</b> · {b.hook}</div>}
                   {b.hashtags && <div style={{ fontSize: 11, color: cc, marginTop: 6 }}>{b.hashtags}</div>}
+                  <div style={{ marginTop: 8 }}><DateRow publish={b.publish_date} production={b.production_due} edit={b.edit_due} /></div>
                   {refs.length > 0 && (
                     <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 3 }}>
                       <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text3)' }}>References</span>
