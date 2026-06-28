@@ -66,13 +66,16 @@ export default function StudioShell({ profile, email, content, brands = [], camp
   const pendingCount = content.filter((c) => c.status === 'review').length;
 
   function go(id) {
+    // Set state immediately for instant feedback, then reflect it in the URL.
+    // Writing location.hash (instead of pushState) fires the 'hashchange'
+    // listener, so back/forward and the hash stay the single source of truth —
+    // this is what stops sub-nav items needing a second tap.
     setActive(id);
     setDrawer(false);
-    // Reflect the section in the URL so refresh/back/forward keep your place.
     if (typeof window !== 'undefined') {
       const target = `#${id}`;
       if (window.location.hash !== target) {
-        window.history.pushState(null, '', target);
+        window.location.hash = id;
       }
     }
   }
@@ -582,9 +585,7 @@ function CampaignForm({ campaign, brands = [], onDone, onCancel }) {
       : []
   );
 
-  useEffect(() => { if (state?.ok) setTimeout(onDone, 0); }, [state]);
-
-  const addPillar = () => setPillars((p) => [...p, { name: '', description: '' }]);
+  useEffect(() => { if (state?.ok) onDone(); }, [state?.ok]);
   const removePillar = (i) => setPillars((p) => p.filter((_, idx) => idx !== i));
   const updatePillar = (i, key, val) =>
     setPillars((p) => p.map((row, idx) => (idx === i ? { ...row, [key]: val } : row)));
@@ -1323,7 +1324,7 @@ function BrandForm({ brand, onDone, onCancel }) {
     ) : null
   );
 
-  useEffect(() => { if (state?.ok) setTimeout(onDone, 0); }, [state]);
+  useEffect(() => { if (state?.ok) onDone(); }, [state?.ok]);
 
   const palette = ['#EE268C', '#64BC46', '#AED8FF', '#FFAEF1', '#DDEE26'];
   const lbl = { fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text3)', marginBottom: 6, display: 'block' };
@@ -1719,7 +1720,7 @@ function IdeasView({ ideas, brands, campaigns, brandById, isCommand }) {
   const [editing, setEditing] = useState(null);
   const [state, formAction, pending] = useActionState(saveIdea, {});
   const [, promoteAction, promoting] = useActionState(promoteIdeaToBrief, {});
-  const [delState, deleteAction] = useActionState(deleteIdea, {});
+  const [delState, deleteAction, deletingIdea] = useActionState(deleteIdea, {});
   const [brandId, setBrandId] = useState('');
   const [campId, setCampId] = useState('');
   const [pillar, setPillar] = useState('');
@@ -1728,7 +1729,7 @@ function IdeasView({ ideas, brands, campaigns, brandById, isCommand }) {
   const [publishDate, setPublishDate] = useState('');
   const [status, setStatus] = useState('new');
 
-  useEffect(() => { if (state?.ok) { setShowForm(false); setEditing(null); } }, [state]);
+  useEffect(() => { if (state?.ok) { setShowForm(false); setEditing(null); } }, [state?.ok]);
 
   // Pillars available depend on the selected campaign.
   const selectedCamp = campaigns.find((c) => c.id === campId);
@@ -1885,7 +1886,7 @@ function IdeasView({ ideas, brands, campaigns, brandById, isCommand }) {
                     <button type="button" className="btn bg" style={{ fontSize: 12 }} onClick={() => openEdit(i)}>✎</button>
                     <form action={deleteAction} style={{ display: 'inline' }}>
                       <input type="hidden" name="id" value={i.id} />
-                      <button className="btn bg" type="submit" style={{ fontSize: 12, color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }}>🗑</button>
+                      <button className="btn bg" type="submit" disabled={deletingIdea} style={{ fontSize: 12, color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }}>🗑</button>
                     </form>
                   </div>
                 )}
@@ -1903,7 +1904,7 @@ function BriefsView({ briefs, ideas, brands, brandById, isCommand }) {
   const [editing, setEditing] = useState(null); // brief being edited (or null)
   const [state, formAction, pending] = useActionState(saveBrief, {});
   const [, startAction, starting] = useActionState(startProduction, {});
-  const [delState, deleteAction] = useActionState(deleteBrief, {});
+  const [delState, deleteAction, deletingBrief] = useActionState(deleteBrief, {});
   const [status, setStatus] = useState('draft');
   const [channel, setChannel] = useState('');
   const [format, setFormat] = useState('');
@@ -1912,7 +1913,7 @@ function BriefsView({ briefs, ideas, brands, brandById, isCommand }) {
   const [uploading, setUploading] = useState(false);
   const [uploadErr, setUploadErr] = useState('');
 
-  useEffect(() => { if (state?.ok) setEditing(null); }, [state]);
+  useEffect(() => { if (state?.ok) setEditing(null); }, [state?.ok]);
 
   const ideaTitle = (id) => ideas.find((x) => x.id === id)?.title;
   const formatOptions = FORMATS_BY_CHANNEL[channel] || [];
@@ -2120,7 +2121,7 @@ function BriefsView({ briefs, ideas, brands, brandById, isCommand }) {
                       <button type="button" className="btn bg" style={{ fontSize: 12, flex: 1 }} onClick={() => openEditBrief(b)}>✎</button>
                       <form action={deleteAction} style={{ flex: 1 }}>
                         <input type="hidden" name="id" value={b.id} />
-                        <button className="btn bg" type="submit" style={{ fontSize: 12, width: '100%', color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }}>🗑</button>
+                        <button className="btn bg" type="submit" disabled={deletingBrief} style={{ fontSize: 12, width: '100%', color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }}>🗑</button>
                       </form>
                     </div>
                   </div>
@@ -2138,10 +2139,10 @@ function BriefsView({ briefs, ideas, brands, brandById, isCommand }) {
 function ProductionView({ content, briefs, brands, campaigns, brandById, isCommand }) {
   const [editing, setEditing] = useState(null);
   const [state, formAction, pending] = useActionState(saveContent, {});
-  const [, statusAction] = useActionState(setContentStatus, {});
-  const [delState, deleteAction] = useActionState(deleteContent, {});
+  const [, statusAction, statusBusy] = useActionState(setContentStatus, {});
+  const [delState, deleteAction, deletingItem] = useActionState(deleteContent, {});
 
-  useEffect(() => { if (state?.ok) setEditing(null); }, [state]);
+  useEffect(() => { if (state?.ok) setEditing(null); }, [state?.ok]);
 
   const COLS = [
     { id: 'command_review', label: 'Command Review', color: '#EE268C' },
@@ -2235,15 +2236,15 @@ function ProductionView({ content, briefs, brands, campaigns, brandById, isComma
                         <div style={{ display: 'flex', gap: 5, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                           {prevOf[i.status] && (
                             <form action={statusAction}><input type="hidden" name="id" value={i.id} /><input type="hidden" name="status" value={prevOf[i.status]} />
-                              <button className="btn bg" type="submit" style={{ fontSize: 11, padding: '3px 7px' }}>←</button></form>
+                              <button className="btn bg" type="submit" disabled={statusBusy} style={{ fontSize: 11, padding: '3px 7px' }}>←</button></form>
                           )}
                           {nextOf[i.status] && (
                             <form action={statusAction}><input type="hidden" name="id" value={i.id} /><input type="hidden" name="status" value={nextOf[i.status]} />
-                              <button className="btn bg" type="submit" style={{ fontSize: 11, padding: '3px 7px', color: col.color === '#64BC46' ? undefined : '#64BC46' }}>Advance →</button></form>
+                              <button className="btn bg" type="submit" disabled={statusBusy} style={{ fontSize: 11, padding: '3px 7px', color: col.color === '#64BC46' ? undefined : '#64BC46' }}>Advance →</button></form>
                           )}
                           <button type="button" className="btn bg" style={{ fontSize: 11, padding: '3px 7px' }} onClick={() => setEditing(i)}>✎</button>
                           <form action={deleteAction}><input type="hidden" name="id" value={i.id} />
-                            <button className="btn bg" type="submit" style={{ fontSize: 11, padding: '3px 7px', color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }}>🗑</button></form>
+                            <button className="btn bg" type="submit" disabled={deletingItem} style={{ fontSize: 11, padding: '3px 7px', color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }}>🗑</button></form>
                         </div>
                       )}
                     </div>
@@ -2266,24 +2267,12 @@ function PublishingCenter({ content, brands, brandColor, subView }) {
   const [view, setView] = useState('month');
   // Brand filter: 'all' shows everything; otherwise a brand name scopes the calendar.
   const [brandFilter, setBrandFilter] = useState('all');
-  // Viewed month is navigable — defaults to the current month.
-  const [cursor, setCursor] = useState({ year: now.getFullYear(), month: now.getMonth() });
-  const { year, month } = cursor;
-  const monthName = new Date(year, month, 1).toLocaleString('default', { month: 'long' });
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const monthName = now.toLocaleString('default', { month: 'long' });
   const first = new Date(year, month, 1);
   const startPad = first.getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-  // Is the viewed month the real current month? (controls the "today" highlight)
-  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth();
-
-  const stepMonth = (delta) => {
-    setCursor((c) => {
-      const d = new Date(c.year, c.month + delta, 1);
-      return { year: d.getFullYear(), month: d.getMonth() };
-    });
-  };
-  const goToday = () => setCursor({ year: now.getFullYear(), month: now.getMonth() });
 
   // Apply the brand filter to all views (month grid + board/timeline tables).
   const scoped = brandFilter === 'all'
@@ -2316,14 +2305,7 @@ function PublishingCenter({ content, brands, brandColor, subView }) {
       </div>
 
       <div className="cal-hd">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div className="cvws">
-            <div className="cvw" onClick={() => stepMonth(-1)} title="Previous month" aria-label="Previous month">‹</div>
-            <div className="cvw" onClick={goToday} title="Jump to current month">Today</div>
-            <div className="cvw" onClick={() => stepMonth(1)} title="Next month" aria-label="Next month">›</div>
-          </div>
-          <div className="cmon">{monthName} {year}</div>
-        </div>
+        <div className="cmon">{monthName} {year}</div>
         <div className="cvws">
           {['month', 'board', 'timeline'].map((v) => (
             <div key={v} className={`cvw ${view === v ? 'on' : ''}`} onClick={() => setView(v)} style={{ textTransform: 'capitalize' }}>{v}</div>
@@ -2363,7 +2345,7 @@ function PublishingCenter({ content, brands, brandColor, subView }) {
           </div>
           <div className="cgrid">
             {cells.map((d, i) => (
-              <div className={`cc ${isCurrentMonth && d === now.getDate() ? 'today' : ''} ${d === null ? 'om' : ''}`} key={i}>
+              <div className={`cc ${d === now.getDate() ? 'today' : ''} ${d === null ? 'om' : ''}`} key={i}>
                 {d && <div className="ccn">{d}</div>}
                 {d && (events[d] || []).map((e) => {
                   const cc = CHANNEL_COLOR[e.channel] || brandColor(e.brand);
