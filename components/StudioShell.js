@@ -2264,6 +2264,8 @@ function ProductionView({ content, briefs, brands, campaigns, brandById, isComma
 function PublishingCenter({ content, brands, brandColor, subView }) {
   const now = new Date();
   const [view, setView] = useState('month');
+  // Brand filter: 'all' shows everything; otherwise a brand name scopes the calendar.
+  const [brandFilter, setBrandFilter] = useState('all');
   const year = now.getFullYear();
   const month = now.getMonth();
   const monthName = now.toLocaleString('default', { month: 'long' });
@@ -2271,9 +2273,14 @@ function PublishingCenter({ content, brands, brandColor, subView }) {
   const startPad = first.getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
+  // Apply the brand filter to all views (month grid + board/timeline tables).
+  const scoped = brandFilter === 'all'
+    ? content
+    : content.filter((c) => c.brand === brandFilter);
+
   // map content with a publish/due date in this month → day number
   const events = {};
-  content.forEach((c) => {
+  scoped.forEach((c) => {
     const ds = c.publish_at || c.due_date;
     if (!ds) return;
     const d = new Date(ds);
@@ -2309,6 +2316,29 @@ function PublishingCenter({ content, brands, brandColor, subView }) {
         </div>
       </div>
 
+      {/* Brand filter — view everything at once, or scope the calendar to one brand */}
+      <div className="cvws" style={{ display: 'flex', flexWrap: 'wrap', width: 'fit-content', maxWidth: '100%', marginBottom: 16 }}>
+        <div
+          className={`cvw ${brandFilter === 'all' ? 'on' : ''}`}
+          onClick={() => setBrandFilter('all')}
+        >
+          All Brands
+        </div>
+        {brands.map((b) => {
+          const on = brandFilter === b.name;
+          return (
+            <div
+              key={b.id}
+              className={`cvw ${on ? 'on' : ''}`}
+              onClick={() => setBrandFilter(b.name)}
+              style={on ? { color: b.color, background: (b.color || '#9494AA') + '22' } : { color: b.color }}
+            >
+              {b.name}
+            </div>
+          );
+        })}
+      </div>
+
       {view === 'month' && (
         <div className="calgrid">
           <div className="cday-hd">
@@ -2336,10 +2366,10 @@ function PublishingCenter({ content, brands, brandColor, subView }) {
           <div className="tblh" style={{ gridTemplateColumns: '2.5fr 1fr 1fr 1fr' }}>
             <div className="th">Title</div><div className="th">Brand</div><div className="th">Channel</div><div className="th">Publishes</div>
           </div>
-          {content.filter((c) => c.status === 'scheduled' || c.publish_at).length === 0 && (
+          {scoped.filter((c) => c.status === 'scheduled' || c.publish_at).length === 0 && (
             <div style={{ padding: 30, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>Nothing scheduled.</div>
           )}
-          {content.filter((c) => c.status === 'scheduled' || c.publish_at).map((c) => {
+          {scoped.filter((c) => c.status === 'scheduled' || c.publish_at).map((c) => {
             const bc = brandColor(c.brand);
             return (
               <div className="tr" key={c.id} style={{ gridTemplateColumns: '2.5fr 1fr 1fr 1fr' }}>
