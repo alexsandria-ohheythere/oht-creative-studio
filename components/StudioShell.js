@@ -235,6 +235,35 @@ const CAMP_STATUS = [
 ];
 const campStatus = (id) => CAMP_STATUS.find((s) => s.id === id) || CAMP_STATUS[0];
 
+// Channels and the formats available within each. Used by Ideas + Briefs.
+const CHANNELS = ['TikTok', 'Instagram', 'Threads', 'Facebook', 'YouTube', 'Blog'];
+const FORMATS_BY_CHANNEL = {
+  TikTok: [
+    'Short Form Video (60s)', 'Micro Video (6s-15s)', 'Duets Video',
+    'Stitches Video', 'Carousel', 'Story',
+  ],
+  Instagram: [
+    'Reels', 'Stories', 'Grid Posts', 'Carousel',
+    'Carousel - Mixed Media', 'Carousel - Guide', 'Link Post (Articles)',
+  ],
+  Threads: ['Text-based', 'Media-based', 'Conversational'],
+  Facebook: [
+    'Text Posts', 'Status Updates', 'Reels', 'Stories',
+    'Video Post', 'Photo', 'Link Post (Articles)',
+  ],
+  YouTube: ['Long-Form Videos', 'YouTube Shorts', 'Live Streams', 'Podcasts'],
+  Blog: [
+    'Academy (Educational)', 'Origin Stories', 'Science (Explanation)',
+    'Guide', 'Review', 'Journal', 'Suggestions', 'Deep Dive',
+    'Sustainability', 'Culture & History',
+  ],
+};
+// Semantic channel colors (aligns with brand color system in memory).
+const CHANNEL_COLOR = {
+  TikTok: '#FFAEF1', Instagram: '#EF4576', Threads: '#9494AA',
+  Facebook: '#AED8FF', YouTube: '#64BC46', Blog: '#DDEE26',
+};
+
 function fmtDate(d) {
   if (!d) return null;
   const dt = new Date(d + 'T00:00:00');
@@ -372,6 +401,22 @@ function Campaigns({ isCommand, campaigns = [], content = [], brands = [], brand
             {field('Brand', brandName)}
             {field('Status', st.label)}
             {field('Timeline', fmtRange(open.starts_on, open.ends_on))}
+
+            <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text3)', marginBottom: 8, marginTop: 4 }}>Content Pillars</div>
+            {(!open.pillars || open.pillars.length === 0) ? (
+              <div style={{ fontSize: 12, color: 'var(--text3)', lineHeight: 1.6 }}>
+                No pillars yet. Edit this campaign to add pillars — each one becomes pickable when you create ideas in Content → Ideas.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {open.pillars.map((p, idx) => (
+                  <div key={idx} style={{ padding: '10px 12px', borderRadius: 8, background: 'var(--bg3)', borderLeft: `3px solid ${bc}` }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: p.description ? 4 : 0 }}>{p.name}</div>
+                    {p.description && <div style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.5 }}>{p.description}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="sc" style={{ padding: 18 }}>
@@ -472,8 +517,18 @@ function CampaignForm({ campaign, brands = [], onDone, onCancel }) {
   const [state, formAction, pending] = useActionState(saveCampaign, {});
   const [status, setStatus] = useState(campaign?.status || 'planning');
   const [brandId, setBrandId] = useState(campaign?.brand_id || (brands[0]?.id || ''));
+  const [pillars, setPillars] = useState(
+    Array.isArray(campaign?.pillars) && campaign.pillars.length
+      ? campaign.pillars.map((p) => ({ name: p.name || '', description: p.description || '' }))
+      : []
+  );
 
   useEffect(() => { if (state?.ok) setTimeout(onDone, 0); }, [state]);
+
+  const addPillar = () => setPillars((p) => [...p, { name: '', description: '' }]);
+  const removePillar = (i) => setPillars((p) => p.filter((_, idx) => idx !== i));
+  const updatePillar = (i, key, val) =>
+    setPillars((p) => p.map((row, idx) => (idx === i ? { ...row, [key]: val } : row)));
 
   const lbl = { fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text3)', marginBottom: 6, display: 'block' };
   const inp = { width: '100%', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--rs)', padding: '9px 12px', color: 'var(--text)', fontSize: 13, fontFamily: "'Inter',sans-serif" };
@@ -533,6 +588,47 @@ function CampaignForm({ campaign, brands = [], onDone, onCancel }) {
           <Field label="End date">
             <input style={inp} type="date" name="ends_on" defaultValue={campaign?.ends_on || ''} />
           </Field>
+        </div>
+
+        {/* Content Pillars editor — serialized to a hidden JSON field. */}
+        <input type="hidden" name="pillars" value={JSON.stringify(pillars.filter((p) => (p.name || '').trim()))} />
+        <div style={{ marginBottom: 16 }}>
+          <label style={lbl}>Content Pillars</label>
+          <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 10, lineHeight: 1.5 }}>
+            Define the themes this campaign produces against. Each pillar becomes selectable when you create ideas in Content → Ideas.
+          </div>
+          {pillars.length === 0 && (
+            <div style={{ fontSize: 12, color: 'var(--text3)', padding: '10px 0' }}>No pillars yet.</div>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {pillars.map((p, i) => (
+              <div key={i} style={{ padding: 12, borderRadius: 8, background: 'var(--bg3)', border: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                  <input
+                    style={{ ...inp, fontWeight: 600 }}
+                    value={p.name}
+                    onChange={(e) => updatePillar(i, 'name', e.target.value)}
+                    placeholder={`Pillar ${i + 1} name — e.g. Matcha Education`}
+                  />
+                  <button
+                    type="button"
+                    className="btn bg"
+                    onClick={() => removePillar(i)}
+                    style={{ flex: '0 0 auto', color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }}
+                  >🗑</button>
+                </div>
+                <textarea
+                  style={ta(60)}
+                  value={p.description}
+                  onChange={(e) => updatePillar(i, 'description', e.target.value)}
+                  placeholder="Explain this pillar well — what it covers, the angle, why it matters, example topics."
+                />
+              </div>
+            ))}
+          </div>
+          <button type="button" className="btn bg" onClick={addPillar} style={{ marginTop: 10 }}>
+            ＋ Add pillar
+          </button>
         </div>
 
         <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
@@ -1364,19 +1460,41 @@ function IdeasView({ ideas, brands, campaigns, brandById, isCommand }) {
   const [delState, deleteAction] = useActionState(deleteIdea, {});
   const [brandId, setBrandId] = useState('');
   const [campId, setCampId] = useState('');
+  const [pillar, setPillar] = useState('');
+  const [channel, setChannel] = useState('');
+  const [format, setFormat] = useState('');
   const [status, setStatus] = useState('new');
 
   useEffect(() => { if (state?.ok) { setShowForm(false); setEditing(null); } }, [state]);
 
-  function openNew() { setEditing(null); setBrandId(brands[0]?.id || ''); setCampId(''); setStatus('new'); setShowForm(true); }
-  function openEdit(i) { setEditing(i); setBrandId(i.brand_id || ''); setCampId(i.campaign_id || ''); setStatus(i.status || 'new'); setShowForm(true); }
+  // Pillars available depend on the selected campaign.
+  const selectedCamp = campaigns.find((c) => c.id === campId);
+  const pillarOptions = Array.isArray(selectedCamp?.pillars) ? selectedCamp.pillars : [];
+  const formatOptions = FORMATS_BY_CHANNEL[channel] || [];
+
+  function openNew() {
+    setEditing(null);
+    setBrandId(brands[0]?.id || '');
+    setCampId(''); setPillar(''); setChannel(''); setFormat(''); setStatus('new');
+    setShowForm(true);
+  }
+  function openEdit(i) {
+    setEditing(i);
+    setBrandId(i.brand_id || '');
+    setCampId(i.campaign_id || '');
+    setPillar(i.pillar || '');
+    setChannel(i.channel || '');
+    setFormat(i.format || '');
+    setStatus(i.status || 'new');
+    setShowForm(true);
+  }
 
   return (
     <>
       <div className="ph">
         <div>
           <div className="pt">Ideas</div>
-          <div className="ps">{ideas.length} concepts · the top of the content pipeline</div>
+          <div className="ps">{ideas.length} concepts · pick up a pillar and shape it into a post</div>
         </div>
         {isCommand && !showForm && <button className="btn bl" onClick={openNew}>＋ New idea</button>}
       </div>
@@ -1386,26 +1504,70 @@ function IdeasView({ ideas, brands, campaigns, brandById, isCommand }) {
       )}
 
       {showForm && (
-        <form action={formAction} className="sc" style={{ padding: 22, maxWidth: 640, marginBottom: 18 }}>
+        <form action={formAction} className="sc" style={{ padding: 22, maxWidth: 720, marginBottom: 18 }}>
           {editing && <input type="hidden" name="id" value={editing.id} />}
           <input type="hidden" name="brand_id" value={brandId} />
           <input type="hidden" name="campaign_id" value={campId} />
+          <input type="hidden" name="pillar" value={pillar} />
+          <input type="hidden" name="channel" value={channel} />
+          <input type="hidden" name="format" value={format} />
           <input type="hidden" name="status" value={status} />
+
           <CField label="Title"><input style={cInp} name="title" defaultValue={editing?.title || ''} placeholder="e.g. Behind-the-bar matcha ritual reel" /></CField>
+
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
             <CField label="Brand">
               <select style={cInp} value={brandId} onChange={(e) => setBrandId(e.target.value)}>
                 {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
             </CField>
-            <CField label="Campaign (optional)">
-              <select style={cInp} value={campId} onChange={(e) => setCampId(e.target.value)}>
+            <CField label="Campaign">
+              <select style={cInp} value={campId} onChange={(e) => { setCampId(e.target.value); setPillar(''); }}>
                 <option value="">— none —</option>
                 {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </CField>
           </div>
-          <CField label="Notes"><textarea style={cTa(70)} name="notes" defaultValue={editing?.notes || ''} placeholder="The hook, the angle, why it matters." /></CField>
+
+          <CField label="Content Pillar">
+            {campId === '' ? (
+              <div style={{ fontSize: 12, color: 'var(--text3)', padding: '4px 0' }}>Pick a campaign first to choose one of its pillars.</div>
+            ) : pillarOptions.length === 0 ? (
+              <div style={{ fontSize: 12, color: 'var(--text3)', padding: '4px 0' }}>This campaign has no pillars yet. Add them in the campaign editor.</div>
+            ) : (
+              <select style={cInp} value={pillar} onChange={(e) => setPillar(e.target.value)}>
+                <option value="">— pick a pillar —</option>
+                {pillarOptions.map((p, idx) => <option key={idx} value={p.name}>{p.name}</option>)}
+              </select>
+            )}
+            {pillar && pillarOptions.find((p) => p.name === pillar)?.description && (
+              <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 6, lineHeight: 1.5, padding: '8px 10px', background: 'var(--bg3)', borderRadius: 6 }}>
+                {pillarOptions.find((p) => p.name === pillar).description}
+              </div>
+            )}
+          </CField>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <CField label="Channel">
+              <select style={cInp} value={channel} onChange={(e) => { setChannel(e.target.value); setFormat(''); }}>
+                <option value="">— pick a channel —</option>
+                {CHANNELS.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </CField>
+            <CField label="Format">
+              <select style={cInp} value={format} onChange={(e) => setFormat(e.target.value)} disabled={!channel}>
+                <option value="">{channel ? '— pick a format —' : 'pick a channel first'}</option>
+                {formatOptions.map((f) => <option key={f} value={f}>{f}</option>)}
+              </select>
+            </CField>
+          </div>
+
+          <CField label="Hook"><textarea style={cTa(60)} name="hook" defaultValue={editing?.hook || ''} placeholder="The scroll-stopper. First line / first 2 seconds." /></CField>
+          <CField label="Caption"><textarea style={cTa(90)} name="caption" defaultValue={editing?.caption || ''} placeholder="The full caption copy." /></CField>
+          <CField label="Hashtags"><textarea style={cTa(50)} name="hashtags" defaultValue={editing?.hashtags || ''} placeholder="#matcha #specialtytea #ohheythere" /></CField>
+          <CField label="Mandatories"><textarea style={cTa(60)} name="mandatories" defaultValue={editing?.mandatories || ''} placeholder="Must-includes: logo, link in bio, disclaimer, tag partners, etc." /></CField>
+          <CField label="Notes"><textarea style={cTa(60)} name="notes" defaultValue={editing?.notes || ''} placeholder="Any extra context, the angle, why it matters." /></CField>
+
           <CField label="Status">
             <select style={cInp} value={status} onChange={(e) => setStatus(e.target.value)}>
               <option value="new">New</option><option value="approved">Approved</option><option value="archived">Archived</option>
@@ -1419,20 +1581,29 @@ function IdeasView({ ideas, brands, campaigns, brandById, isCommand }) {
       )}
 
       {ideas.length === 0 && !showForm ? (
-        <ComingSoon icon="◇" title="No ideas yet" body={isCommand ? 'Capture your first concept. Approve it and promote it to a brief to move it down the pipeline.' : 'No ideas captured for your brand yet.'} />
+        <ComingSoon icon="◇" title="No ideas yet" body={isCommand ? 'Capture your first concept. Pick a campaign pillar, choose a channel and format, write the hook and caption — then promote it to a brief.' : 'No ideas captured for your brand yet.'} />
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 14 }}>
           {ideas.map((i) => {
             const b = brandById(i.brand_id);
             const bc = b?.color || '#9494AA';
+            const cc = CHANNEL_COLOR[i.channel] || '#9494AA';
             return (
               <div key={i.id} className="sc" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
                   <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 14, lineHeight: 1.3 }}>{i.title}</div>
                   <Pill text={i.status} color={STATUS_COLOR[i.status] || '#9494AA'} />
                 </div>
-                <span style={{ alignSelf: 'flex-start', fontSize: 11, fontWeight: 600, color: bc, background: bc + '1c', padding: '2px 8px', borderRadius: 5 }}>{b?.name || 'Unassigned'}</span>
-                {i.notes && <div style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.5 }}>{i.notes}</div>}
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: bc, background: bc + '1c', padding: '2px 8px', borderRadius: 5 }}>{b?.name || 'Unassigned'}</span>
+                  {i.pillar && <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text2)', background: 'var(--bg3)', padding: '2px 8px', borderRadius: 5 }}>◆ {i.pillar}</span>}
+                  {i.channel && <span style={{ fontSize: 11, fontWeight: 600, color: cc, background: cc + '1c', padding: '2px 8px', borderRadius: 5 }}>{i.channel}</span>}
+                  {i.format && <span style={{ fontSize: 11, color: 'var(--text3)', background: 'var(--bg3)', padding: '2px 8px', borderRadius: 5 }}>{i.format}</span>}
+                </div>
+                {i.hook && <div style={{ fontSize: 12, color: 'var(--text)', lineHeight: 1.5 }}><b style={{ color: 'var(--text3)', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em' }}>Hook</b><br />{i.hook}</div>}
+                {i.caption && <div style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{i.caption}</div>}
+                {i.hashtags && <div style={{ fontSize: 11, color: cc, lineHeight: 1.4 }}>{i.hashtags}</div>}
+                {i.notes && !i.hook && !i.caption && <div style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.5 }}>{i.notes}</div>}
                 {isCommand && (
                   <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
                     <form action={promoteAction} style={{ display: 'inline' }}>
@@ -1463,40 +1634,133 @@ function BriefsView({ briefs, ideas, brands, brandById, isCommand }) {
   const [, startAction, starting] = useActionState(startProduction, {});
   const [delState, deleteAction] = useActionState(deleteBrief, {});
   const [status, setStatus] = useState('draft');
+  const [channel, setChannel] = useState('');
+  const [format, setFormat] = useState('');
+  const [attachments, setAttachments] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadErr, setUploadErr] = useState('');
 
   useEffect(() => { if (state?.ok) setEditing(null); }, [state]);
 
   const ideaTitle = (id) => ideas.find((x) => x.id === id)?.title;
+  const formatOptions = FORMATS_BY_CHANNEL[channel] || [];
+
+  function openEditBrief(b) {
+    setEditing(b);
+    setStatus(b.status || 'draft');
+    setChannel(b.channel || '');
+    setFormat(b.format || '');
+    setAttachments(Array.isArray(b.attachments) ? b.attachments : []);
+    setUploadErr('');
+  }
+
+  async function handleUpload(e) {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    setUploading(true); setUploadErr('');
+    try {
+      const supabase = createBrowserClient();
+      const next = [];
+      for (const file of files) {
+        const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safe}`;
+        const { error } = await supabase.storage.from('brief-attachments').upload(path, file, { upsert: true });
+        if (error) { setUploadErr(error.message); continue; }
+        const { data } = supabase.storage.from('brief-attachments').getPublicUrl(path);
+        next.push({ url: data.publicUrl, name: file.name });
+      }
+      setAttachments((a) => [...a, ...next]);
+    } catch (err) {
+      setUploadErr(err?.message || 'Upload failed.');
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  }
 
   if (editing) {
     const b = editing;
     return (
       <>
         <div className="ph">
-          <div><div className="pt">{b.id ? 'Edit brief' : 'New brief'}</div><div className="ps">Define what to make and for which channel</div></div>
+          <div><div className="pt">{b.id ? 'Edit brief' : 'New brief'}</div><div className="ps">A thorough plan — references, attachments and the full copy</div></div>
           <button className="btn bg" onClick={() => setEditing(null)}>← Back</button>
         </div>
         {state?.error && <div className="ap-note" style={{ borderColor: 'rgba(255,100,100,.35)', color: '#ff6464' }}>{state.error}</div>}
-        <form action={formAction} className="sc" style={{ padding: 22, maxWidth: 680 }}>
+        <form action={formAction} className="sc" style={{ padding: 22, maxWidth: 760 }}>
           {b.id && <input type="hidden" name="id" value={b.id} />}
           <input type="hidden" name="idea_id" value={b.idea_id || ''} />
           <input type="hidden" name="status" value={status} />
+          <input type="hidden" name="channel" value={channel} />
+          <input type="hidden" name="format" value={format} />
+          <input type="hidden" name="attachments" value={JSON.stringify(attachments)} />
+
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
             <CField label="Brand">
               <select style={cInp} name="brand_id" defaultValue={b.brand_id || brands[0]?.id || ''}>
                 {brands.map((br) => <option key={br.id} value={br.id}>{br.name}</option>)}
               </select>
             </CField>
-            <CField label="Channel"><input style={cInp} name="channel" defaultValue={b.channel || ''} placeholder="Instagram, TikTok, YouTube…" /></CField>
+            <CField label="Status">
+              <select style={cInp} value={status} onChange={(e) => setStatus(e.target.value)}>
+                <option value="draft">Draft</option><option value="approved">Approved</option><option value="archived">Archived</option>
+              </select>
+            </CField>
           </div>
-          <CField label="The brief"><textarea style={cTa(140)} name="brief" defaultValue={b.brief || ''} placeholder="Objective, key message, format, references, must-haves." /></CField>
-          <CField label="Status">
-            <select style={cInp} value={status} onChange={(e) => setStatus(e.target.value)}>
-              <option value="draft">Draft</option><option value="approved">Approved</option><option value="archived">Archived</option>
-            </select>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <CField label="Channel">
+              <select style={cInp} value={channel} onChange={(e) => { setChannel(e.target.value); setFormat(''); }}>
+                <option value="">— pick a channel —</option>
+                {CHANNELS.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </CField>
+            <CField label="Format">
+              <select style={cInp} value={format} onChange={(e) => setFormat(e.target.value)} disabled={!channel}>
+                <option value="">{channel ? '— pick a format —' : 'pick a channel first'}</option>
+                {formatOptions.map((f) => <option key={f} value={f}>{f}</option>)}
+              </select>
+            </CField>
+          </div>
+
+          <CField label="The brief"><textarea style={cTa(140)} name="brief" defaultValue={b.brief || ''} placeholder="Objective, key message, structure, shot list, must-haves." /></CField>
+          <CField label="Hook"><textarea style={cTa(55)} name="hook" defaultValue={b.hook || ''} placeholder="The scroll-stopper." /></CField>
+          <CField label="Caption"><textarea style={cTa(90)} name="caption" defaultValue={b.caption || ''} placeholder="Full caption copy." /></CField>
+          <CField label="Hashtags"><textarea style={cTa(45)} name="hashtags" defaultValue={b.hashtags || ''} placeholder="#matcha #specialtytea" /></CField>
+          <CField label="Mandatories"><textarea style={cTa(55)} name="mandatories" defaultValue={b.mandatories || ''} placeholder="Must-includes: logo, link in bio, disclaimers, partner tags." /></CField>
+
+          <CField label="Reference links">
+            <textarea style={cTa(70)} name="references" defaultValue={(Array.isArray(b.references) ? b.references : []).join('\n')} placeholder="One URL per line — moodboards, example posts, docs." />
           </CField>
+
+          <div style={{ marginBottom: 14 }}>
+            <label style={cLbl}>Image attachments</label>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
+              <label className="btn bg" style={{ cursor: 'pointer', fontSize: 12 }}>
+                {uploading ? 'Uploading…' : '＋ Attach images'}
+                <input type="file" accept="image/*" multiple onChange={handleUpload} style={{ display: 'none' }} disabled={uploading} />
+              </label>
+              {uploadErr && <span style={{ fontSize: 11, color: '#ff6464' }}>{uploadErr}</span>}
+            </div>
+            {attachments.length > 0 && (
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                {attachments.map((a, idx) => (
+                  <div key={idx} style={{ position: 'relative', width: 84, height: 84, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={a.url} alt={a.name || 'attachment'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <button
+                      type="button"
+                      onClick={() => setAttachments((arr) => arr.filter((_, i) => i !== idx))}
+                      style={{ position: 'absolute', top: 4, right: 4, width: 20, height: 20, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,.65)', color: '#fff', fontSize: 12, lineHeight: 1, cursor: 'pointer' }}
+                    >×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div style={{ display: 'flex', gap: 10 }}>
-            <button className="btn bl" type="submit" disabled={pending}>{pending ? 'Saving…' : 'Save brief'}</button>
+            <button className="btn bl" type="submit" disabled={pending || uploading}>{pending ? 'Saving…' : 'Save brief'}</button>
             <button className="btn bg" type="button" onClick={() => setEditing(null)}>Cancel</button>
           </div>
         </form>
@@ -1508,7 +1772,7 @@ function BriefsView({ briefs, ideas, brands, brandById, isCommand }) {
     <>
       <div className="ph">
         <div><div className="pt">Briefs</div><div className="ps">{briefs.length} briefs · turn approved ideas into a plan to produce</div></div>
-        {isCommand && <button className="btn bl" onClick={() => { setStatus('draft'); setEditing({}); }}>＋ New brief</button>}
+        {isCommand && <button className="btn bl" onClick={() => { setStatus('draft'); setChannel(''); setFormat(''); setAttachments([]); setUploadErr(''); setEditing({}); }}>＋ New brief</button>}
       </div>
 
       {(state?.error || delState?.error) && (
@@ -1522,18 +1786,42 @@ function BriefsView({ briefs, ideas, brands, brandById, isCommand }) {
           {briefs.map((b) => {
             const br = brandById(b.brand_id);
             const bc = br?.color || '#9494AA';
+            const cc = CHANNEL_COLOR[b.channel] || '#9494AA';
             const fromIdea = ideaTitle(b.idea_id);
+            const refs = Array.isArray(b.references) ? b.references : [];
+            const atts = Array.isArray(b.attachments) ? b.attachments : [];
             return (
               <div key={b.id} className="sc" style={{ padding: 16, display: 'flex', gap: 14, alignItems: 'flex-start' }}>
                 <div style={{ width: 6, alignSelf: 'stretch', borderRadius: 4, background: bc, flex: '0 0 6px' }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
                     <span style={{ fontSize: 12, fontWeight: 600, color: bc }}>{br?.name || 'Unassigned'}</span>
-                    {b.channel && <span style={{ fontSize: 12, color: 'var(--text3)' }}>· {b.channel}</span>}
+                    {b.channel && <span style={{ fontSize: 11, fontWeight: 600, color: cc, background: cc + '1c', padding: '2px 8px', borderRadius: 5 }}>{b.channel}</span>}
+                    {b.format && <span style={{ fontSize: 11, color: 'var(--text3)', background: 'var(--bg3)', padding: '2px 8px', borderRadius: 5 }}>{b.format}</span>}
                     <Pill text={b.status} color={STATUS_COLOR[b.status] || '#9494AA'} />
                   </div>
                   {fromIdea && <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>From idea: {fromIdea}</div>}
                   <div style={{ fontSize: 13, color: b.brief ? 'var(--text)' : 'var(--text3)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{b.brief || 'No brief written yet.'}</div>
+                  {b.hook && <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8 }}><b style={{ color: 'var(--text3)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em' }}>Hook</b> · {b.hook}</div>}
+                  {b.hashtags && <div style={{ fontSize: 11, color: cc, marginTop: 6 }}>{b.hashtags}</div>}
+                  {refs.length > 0 && (
+                    <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                      <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text3)' }}>References</span>
+                      {refs.map((r, idx) => (
+                        <a key={idx} href={r} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#78b8e8', textDecoration: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>↗ {r}</a>
+                      ))}
+                    </div>
+                  )}
+                  {atts.length > 0 && (
+                    <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {atts.map((a, idx) => (
+                        <a key={idx} href={a.url} target="_blank" rel="noreferrer" style={{ display: 'block', width: 64, height: 64, borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={a.url} alt={a.name || 'attachment'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        </a>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 {isCommand && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: '0 0 auto' }}>
@@ -1544,7 +1832,7 @@ function BriefsView({ briefs, ideas, brands, brandById, isCommand }) {
                       <button className="btn bg" type="submit" disabled={starting} style={{ fontSize: 12, whiteSpace: 'nowrap' }}>Start Production →</button>
                     </form>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn bg" style={{ fontSize: 12, flex: 1 }} onClick={() => { setStatus(b.status || 'draft'); setEditing(b); }}>✎</button>
+                      <button className="btn bg" style={{ fontSize: 12, flex: 1 }} onClick={() => openEditBrief(b)}>✎</button>
                       <form action={deleteAction} style={{ flex: 1 }}>
                         <input type="hidden" name="id" value={b.id} />
                         <button className="btn bg" type="submit" style={{ fontSize: 12, width: '100%', color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }}>🗑</button>
