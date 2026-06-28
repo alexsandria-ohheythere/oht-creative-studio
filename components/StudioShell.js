@@ -1039,6 +1039,62 @@ function BrandCenter({ brands, isCommand, content }) {
           });
         })()}
 
+        {/* Visual Assets (attachments from the Visual tab) */}
+        {(() => {
+          const bb = open.brand_book || {};
+          const sgPdf = bb.style_guide_pdf;
+          const logoImgs = bb.logo_images || [];
+          const fonts = bb.font_files || [];
+          const covers = bb.cover_templates || [];
+          const vrefs = bb.video_refs || [];
+          const photos = bb.photo_images || {};
+          const pkgImgs = bb.packaging_images || [];
+          const photoCats = Object.entries(photos).filter(([, arr]) => (arr || []).length);
+          const hasAny = sgPdf || logoImgs.length || fonts.length || covers.length || vrefs.length || photoCats.length || pkgImgs.length;
+          if (!hasAny) return null;
+          const subhead = (t) => <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text3)', marginBottom: 8 }}>{t}</div>;
+          const thumbs = (arr) => (
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {arr.map((it, i) => (
+                <a key={i} href={it.url} target="_blank" rel="noreferrer" style={{ display: 'block', width: 110, height: 88, borderRadius: 9, background: `center/cover no-repeat url(${it.url})`, border: '1px solid var(--border)' }} />
+              ))}
+            </div>
+          );
+          const linkRow = (arr, icon) => (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {arr.map((it, i) => (
+                <a key={i} href={it.url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: 'var(--text)', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{icon} {it.name || it.url}</a>
+              ))}
+            </div>
+          );
+          return (
+            <div className="card" style={{ marginBottom: 18 }}>
+              <div className="ch"><div className="ct">Visual Assets</div></div>
+              <div className="cb" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                {sgPdf && <div>{subhead('Style Guideline PDF')}{linkRow([sgPdf], '📄')}</div>}
+                {logoImgs.length > 0 && <div>{subhead('Logo Files')}{thumbs(logoImgs)}</div>}
+                {fonts.length > 0 && <div>{subhead('Font Files')}{linkRow(fonts, '🔤')}</div>}
+                {photoCats.length > 0 && (
+                  <div>
+                    {subhead('Photography References')}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      {photoCats.map(([cat, arr]) => (
+                        <div key={cat}>
+                          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: 'var(--text2)', marginBottom: 6 }}>{cat}</div>
+                          {thumbs(arr)}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {covers.length > 0 && <div>{subhead('Cover Templates')}{thumbs(covers)}</div>}
+                {vrefs.length > 0 && <div>{subhead('Video References')}{linkRow(vrefs, '🔗')}</div>}
+                {pkgImgs.length > 0 && <div>{subhead('Visual & Packaging')}{thumbs(pkgImgs)}</div>}
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Caption Playbook (machine-readable — feeds the Line-Up module) */}
         {(() => {
           const bb = open.brand_book || {};
@@ -1200,6 +1256,72 @@ function BrandForm({ brand, onDone, onCancel }) {
   const [galleryUploading, setGalleryUploading] = useState(false);
   const bb = brand?.brand_book || {};
 
+  // ---- New Visual attachments (all stored in brand_book) ----
+  const PHOTO_CATS = ['Exterior', 'Interior', 'Drink', 'Food', 'Barista'];
+  const [styleGuidePdf, setStyleGuidePdf] = useState(() => bb.style_guide_pdf || null); // {url,name}
+  const [logoImages, setLogoImages] = useState(() => bb.logo_images || []);             // [{url}]
+  const [fontFiles, setFontFiles] = useState(() => bb.font_files || []);                // [{url,name}]
+  const [coverTemplates, setCoverTemplates] = useState(() => bb.cover_templates || []); // [{url}]
+  const [videoRefs, setVideoRefs] = useState(() => bb.video_refs || []);                // [{url}]
+  const [videoRefInput, setVideoRefInput] = useState('');
+  const [photoImages, setPhotoImages] = useState(() => bb.photo_images || {});          // {cat:[{url}]}
+  const [packagingImages, setPackagingImages] = useState(() => bb.packaging_images || []); // [{url}]
+  const [busy, setBusy] = useState('');
+
+  // Generic uploader → brand-assets bucket. Returns [{url,name}].
+  async function uploadToAssets(files) {
+    const supabase = createBrowserClient();
+    const out = [];
+    for (const file of files) {
+      const ext = (file.name.split('.').pop() || 'bin').toLowerCase();
+      const path = `${(brand?.id || 'new')}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`;
+      const { error } = await supabase.storage.from('brand-assets').upload(path, file, { upsert: true });
+      if (error) throw error;
+      const { data } = supabase.storage.from('brand-assets').getPublicUrl(path);
+      out.push({ url: data.publicUrl, name: file.name });
+    }
+    return out;
+  }
+  async function withBusy(key, fn) {
+    setUploadErr(''); setBusy(key);
+    try { await fn(); } catch (err) { setUploadErr(err.message || 'Upload failed.'); }
+    finally { setBusy(''); }
+  }
+  function addVideoRef() {
+    const v = videoRefInput.trim();
+    if (!v) return;
+    setVideoRefs((r) => [...r, { url: v }]);
+    setVideoRefInput('');
+  }
+
+  // ---- Render helpers for attachments ----
+  const ImageGrid = ({ items, onRemove, addLabel, busyKey, onPick, accept = 'image/*', multiple = true }) => (
+    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 8 }}>
+      {(items || []).map((it, i) => (
+        <div key={i} style={{ position: 'relative', width: 100 }}>
+          <div style={{ width: 100, height: 80, borderRadius: 8, background: `center/cover no-repeat url(${it.url})`, border: '1px solid var(--border)' }} />
+          <button type="button" onClick={() => onRemove(i)} style={{ position: 'absolute', top: 4, right: 4, width: 20, height: 20, borderRadius: '50%', background: 'rgba(0,0,0,.6)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 11 }}>×</button>
+        </div>
+      ))}
+      <label className="btn bg" style={{ cursor: 'pointer', width: 100, height: 80, display: 'grid', placeItems: 'center', borderStyle: 'dashed', fontSize: 11, textAlign: 'center', padding: 4 }}>
+        {busy === busyKey ? 'Uploading…' : addLabel}
+        <input type="file" accept={accept} multiple={multiple} onChange={onPick} style={{ display: 'none' }} />
+      </label>
+    </div>
+  );
+  const FileList = ({ items, onRemove }) => (
+    (items || []).length ? (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+        {items.map((it, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 10px' }}>
+            <a href={it.url} target="_blank" rel="noreferrer" style={{ flex: 1, fontSize: 12, color: 'var(--text)', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📎 {it.name || it.url}</a>
+            <button type="button" onClick={() => onRemove(i)} style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 14 }}>×</button>
+          </div>
+        ))}
+      </div>
+    ) : null
+  );
+
   useEffect(() => { if (state?.ok) setTimeout(onDone, 0); }, [state]);
 
   const palette = ['#EE268C', '#64BC46', '#AED8FF', '#FFAEF1', '#DDEE26'];
@@ -1301,6 +1423,13 @@ function BrandForm({ brand, onDone, onCancel }) {
           }))
         )} />
         <input type="hidden" name="gallery" value={JSON.stringify(gallery)} />
+        <input type="hidden" name="style_guide_pdf" value={JSON.stringify(styleGuidePdf)} />
+        <input type="hidden" name="logo_images" value={JSON.stringify(logoImages)} />
+        <input type="hidden" name="font_files" value={JSON.stringify(fontFiles)} />
+        <input type="hidden" name="cover_templates" value={JSON.stringify(coverTemplates)} />
+        <input type="hidden" name="video_refs" value={JSON.stringify(videoRefs)} />
+        <input type="hidden" name="photo_images" value={JSON.stringify(photoImages)} />
+        <input type="hidden" name="packaging_images" value={JSON.stringify(packagingImages)} />
 
         {/* ICON + NAME header card (always visible) */}
         <div className="card" style={{ padding: 22, marginBottom: 16, display: 'flex', gap: 18, alignItems: 'center' }}>
@@ -1384,12 +1513,81 @@ function BrandForm({ brand, onDone, onCancel }) {
               ))}
             </div>
 
-            <Field label="Style Guidelines"><textarea style={ta(90)} name="style_guide" defaultValue={brand?.style_guide || ''} placeholder="Visual rules — colors, type, imagery, do’s and don’ts." /></Field>
-            <Field label="Logo Rules" sub="Clear space, minimum size, what not to do."><textarea style={ta(80)} name="logo_rules" defaultValue={bb.logo_rules || ''} placeholder="How the logo should and shouldn't be used." /></Field>
-            <Field label="Typography" sub="Fonts, weights, hierarchy."><textarea style={ta(80)} name="typography" defaultValue={bb.typography || ''} placeholder="Headline font, body font, when to use each." /></Field>
-            <Field label="Photography Direction"><textarea style={ta(80)} name="photo_direction" defaultValue={bb.photo_direction || ''} placeholder="Lighting, mood, composition, color grading." /></Field>
-            <Field label="Video Direction"><textarea style={ta(80)} name="video_direction" defaultValue={bb.video_direction || ''} placeholder="Pacing, music, captions, format per platform." /></Field>
-            <Field label="Visual & Packaging Notes"><textarea style={ta(80)} name="packaging" defaultValue={bb.packaging || ''} placeholder="Cup design, labels, stickers, print standards." /></Field>
+            {/* STYLE GUIDELINES — text + PDF */}
+            <Field label="Style Guidelines" sub="Write the rules and/or attach the full guideline PDF.">
+              <textarea style={ta(90)} name="style_guide" defaultValue={brand?.style_guide || ''} placeholder="Visual rules — colors, type, imagery, do’s and don’ts." />
+              {styleGuidePdf ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 10px' }}>
+                  <a href={styleGuidePdf.url} target="_blank" rel="noreferrer" style={{ flex: 1, fontSize: 12, color: 'var(--text)', textDecoration: 'none' }}>📄 {styleGuidePdf.name}</a>
+                  <button type="button" onClick={() => setStyleGuidePdf(null)} style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 14 }}>×</button>
+                </div>
+              ) : (
+                <label className="btn bg bsm" style={{ cursor: 'pointer', marginTop: 8, display: 'inline-block' }}>
+                  {busy === 'sg' ? 'Uploading…' : '📄 Attach PDF'}
+                  <input type="file" accept="application/pdf,.pdf" onChange={(e) => { const f = e.target.files?.[0]; if (f) withBusy('sg', async () => { const [up] = await uploadToAssets([f]); setStyleGuidePdf(up); }); }} style={{ display: 'none' }} />
+                </label>
+              )}
+            </Field>
+
+            {/* LOGO RULES — text + images */}
+            <Field label="Logo Rules" sub="Clear space, minimum size, what not to do. Attach logo files / lockups.">
+              <textarea style={ta(80)} name="logo_rules" defaultValue={bb.logo_rules || ''} placeholder="How the logo should and shouldn't be used." />
+              <ImageGrid items={logoImages} busyKey="logo" addLabel="＋ Add logo"
+                onRemove={(i) => setLogoImages((a) => a.filter((_, x) => x !== i))}
+                onPick={(e) => { const fs = Array.from(e.target.files || []); if (fs.length) withBusy('logo', async () => { const up = await uploadToAssets(fs); setLogoImages((a) => [...a, ...up.map(({ url }) => ({ url }))]); }); }} />
+            </Field>
+
+            {/* TYPOGRAPHY — text + font files */}
+            <Field label="Typography" sub="Fonts, weights, hierarchy. Attach the actual font files (.ttf, .otf, .woff).">
+              <textarea style={ta(80)} name="typography" defaultValue={bb.typography || ''} placeholder="Headline font, body font, when to use each." />
+              <FileList items={fontFiles} onRemove={(i) => setFontFiles((a) => a.filter((_, x) => x !== i))} />
+              <label className="btn bg bsm" style={{ cursor: 'pointer', marginTop: 8, display: 'inline-block' }}>
+                {busy === 'fonts' ? 'Uploading…' : '🔤 Add font files'}
+                <input type="file" accept=".ttf,.otf,.woff,.woff2,font/*" multiple onChange={(e) => { const fs = Array.from(e.target.files || []); if (fs.length) withBusy('fonts', async () => { const up = await uploadToAssets(fs); setFontFiles((a) => [...a, ...up]); }); }} style={{ display: 'none' }} />
+              </label>
+            </Field>
+
+            {/* PHOTOGRAPHY DIRECTION — text + categorized images */}
+            <Field label="Photography Direction" sub="Lighting, mood, composition. Attach reference shots per category.">
+              <textarea style={ta(80)} name="photo_direction" defaultValue={bb.photo_direction || ''} placeholder="Lighting, mood, composition, color grading." />
+              <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {PHOTO_CATS.map((cat) => (
+                  <div key={cat}>
+                    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: 'var(--text2)' }}>{cat}</div>
+                    <ImageGrid items={photoImages[cat]} busyKey={`photo-${cat}`} addLabel={`＋ ${cat}`}
+                      onRemove={(i) => setPhotoImages((m) => ({ ...m, [cat]: (m[cat] || []).filter((_, x) => x !== i) }))}
+                      onPick={(e) => { const fs = Array.from(e.target.files || []); if (fs.length) withBusy(`photo-${cat}`, async () => { const up = await uploadToAssets(fs); setPhotoImages((m) => ({ ...m, [cat]: [...(m[cat] || []), ...up.map(({ url }) => ({ url }))] })); }); }} />
+                  </div>
+                ))}
+              </div>
+            </Field>
+
+            {/* VIDEO DIRECTION — text + cover templates + reference links */}
+            <Field label="Video Direction" sub="Pacing, music, captions, format per platform.">
+              <textarea style={ta(80)} name="video_direction" defaultValue={bb.video_direction || ''} placeholder="Pacing, music, captions, format per platform." />
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: 'var(--text2)' }}>Cover Templates</div>
+                <ImageGrid items={coverTemplates} busyKey="cover" addLabel="＋ Add cover"
+                  onRemove={(i) => setCoverTemplates((a) => a.filter((_, x) => x !== i))}
+                  onPick={(e) => { const fs = Array.from(e.target.files || []); if (fs.length) withBusy('cover', async () => { const up = await uploadToAssets(fs); setCoverTemplates((a) => [...a, ...up.map(({ url }) => ({ url }))]); }); }} />
+              </div>
+              <div style={{ marginTop: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: 'var(--text2)', marginBottom: 6 }}>Video References</div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input value={videoRefInput} onChange={(e) => setVideoRefInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addVideoRef(); } }} placeholder="Paste a link (YouTube, IG, Drive…)" style={inp} />
+                  <button type="button" className="btn bg" onClick={addVideoRef}>Add</button>
+                </div>
+                <FileList items={videoRefs} onRemove={(i) => setVideoRefs((a) => a.filter((_, x) => x !== i))} />
+              </div>
+            </Field>
+
+            {/* VISUAL & PACKAGING — text + images */}
+            <Field label="Visual & Packaging Notes" sub="Cup design, labels, stickers, print standards. Attach images.">
+              <textarea style={ta(80)} name="packaging" defaultValue={bb.packaging || ''} placeholder="Cup design, labels, stickers, print standards." />
+              <ImageGrid items={packagingImages} busyKey="pkg" addLabel="＋ Add image"
+                onRemove={(i) => setPackagingImages((a) => a.filter((_, x) => x !== i))}
+                onPick={(e) => { const fs = Array.from(e.target.files || []); if (fs.length) withBusy('pkg', async () => { const up = await uploadToAssets(fs); setPackagingImages((a) => [...a, ...up.map(({ url }) => ({ url }))]); }); }} />
+            </Field>
 
             {/* REFERENCE GALLERY */}
             <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, marginTop: 4 }}>
