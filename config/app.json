@@ -1,12 +1,12 @@
 {
   "nav": [
-    { "id": "dash", "label": "Dashboard", "icon": "⊞", "section": "Overview", "roles": ["command", "freelance"] },
+    { "id": "dash", "label": "Dashboard", "icon": "◆", "section": "Overview", "roles": ["command", "freelance"] },
 
-    { "id": "brain", "label": "Brand Brain", "icon": "◈", "section": "Foundation", "roles": ["command", "freelance"], "accent": "#EE268C" },
+    { "id": "brain", "label": "Brand Brain", "icon": "◆", "section": "Foundation", "roles": ["command", "freelance"] },
 
-    { "id": "camp", "label": "Campaigns", "icon": "◇", "section": "Social Media", "roles": ["command"], "accent": "#FFAEF1" },
+    { "id": "camp", "label": "Campaigns", "icon": "◆", "section": "Social Media", "roles": ["command"] },
 
-    { "id": "content", "label": "Content", "icon": "▣", "section": "Social Media", "roles": ["command", "freelance"], "accent": "#64BC46",
+    { "id": "content", "label": "Content", "icon": "◆", "section": "Social Media", "roles": ["command", "freelance"],
       "children": [
         { "id": "content.ideas", "label": "Ideas" },
         { "id": "content.briefs", "label": "Briefs" },
@@ -15,14 +15,14 @@
       ]
     },
 
-    { "id": "publishing", "label": "Publishing", "icon": "⊛", "section": "Social Media", "roles": ["command"], "accent": "#AED8FF",
+    { "id": "publishing", "label": "Publishing", "icon": "◆", "section": "Social Media", "roles": ["command"],
       "children": [
         { "id": "publishing.calendar", "label": "Calendar" },
         { "id": "publishing.channels", "label": "Channels" }
       ]
     },
 
-    { "id": "insights", "label": "Insights", "icon": "◉", "section": "Social Media", "roles": ["command"], "accent": "#DDEE26",
+    { "id": "insights", "label": "Insights", "icon": "◆", "section": "Social Media", "roles": ["command"],
       "children": [
         { "id": "insights.performance", "label": "Performance" },
         { "id": "insights.audience", "label": "Audience" },
@@ -30,18 +30,24 @@
       ]
     },
 
-    { "id": "strategist", "label": "AI Strategist", "icon": "✦", "section": "Social Media", "roles": ["command"], "accent": "#DDEE26", "flagship": true },
+    { "id": "strategist", "label": "AI Strategist", "icon": "◆", "section": "Social Media", "roles": ["command"], "flagship": true },
 
-    { "id": "mc.theme", "label": "Theme", "icon": "◈", "section": "Marketing Collaterals", "roles": ["command"], "accent": "#EE268C" },
+    { "id": "mc.theme", "label": "Theme", "icon": "◆", "section": "Marketing Collaterals", "roles": ["command"] },
 
-    { "id": "mc.content", "label": "Content", "icon": "▣", "section": "Marketing Collaterals", "roles": ["command", "freelance"], "accent": "#64BC46" },
+    { "id": "mc.content", "label": "Content", "icon": "◆", "section": "Marketing Collaterals", "roles": ["command", "freelance"] },
 
-    { "id": "mc.briefs", "label": "Briefs", "icon": "◇", "section": "Marketing Collaterals", "roles": ["command", "freelance"], "accent": "#FFAEF1" },
+    { "id": "mc.briefs", "label": "Briefs", "icon": "◆", "section": "Marketing Collaterals", "roles": ["command", "freelance"] },
 
-    { "id": "mc.production", "label": "Production", "icon": "⊛", "section": "Marketing Collaterals", "roles": ["command", "freelance"], "accent": "#AED8FF" },
+    { "id": "mc.production", "label": "Production", "icon": "◆", "section": "Marketing Collaterals", "roles": ["command", "freelance"] },
 
-    { "id": "mc.assets", "label": "Assets", "icon": "◉", "section": "Marketing Collaterals", "roles": ["command"], "accent": "#DDEE26" }
+    { "id": "mc.assets", "label": "Assets", "icon": "◆", "section": "Marketing Collaterals", "roles": ["command"] }
   ],
+  "groupColors": {
+    "Overview": "#6f6f7d",
+    "Foundation": "#EE268C",
+    "Social Media": "#64BC46",
+    "Marketing Collaterals": "#FFAEF1"
+  },
   "statuses": [
     { "id": "briefed", "label": "Briefed", "color": "#9494AA" },
     { "id": "progress", "label": "In Progress", "color": "#78b8e8" },
