@@ -8,7 +8,7 @@ import { saveAsset, deleteAsset } from '../app/dashboard/asset-actions';
 import {
   saveIdea, deleteIdea, promoteIdeaToBrief,
   saveBrief, deleteBrief, startProduction,
-  saveContent, setContentStatus, deleteContent,
+  saveContent, setContentStatus, deleteContent, setContentAttachments,
 } from '../app/dashboard/content-actions';
 import { createClient as createBrowserClient } from '../lib/supabase-browser';
 
@@ -2407,6 +2407,11 @@ function ProductionView({ content, briefs, brands, campaigns, brandById, isComma
   const [state, formAction, pending] = useActionState(saveContent, {});
   const [, statusAction, statusBusy] = useActionState(setContentStatus, {});
   const [delState, deleteAction, deletingItem] = useActionState(deleteContent, {});
+  const [attState, attAction, attBusy] = useActionState(setContentAttachments, {});
+
+  // Draft state for the attachments editor (in the detail view).
+  const [linkUrl, setLinkUrl] = useState('');
+  const [linkName, setLinkName] = useState('');
 
   useEffect(() => { if (state?.ok) setEditing(null); }, [state?.ok]);
 
@@ -2426,6 +2431,28 @@ function ProductionView({ content, briefs, brands, campaigns, brandById, isComma
     fd.set('id', id);
     fd.set('status', status);
     statusAction(fd);
+  }
+
+  // Persist a new attachments array for a content item, and reflect it
+  // immediately in the open detail view.
+  function saveAttachments(item, list) {
+    const fd = new FormData();
+    fd.set('id', item.id);
+    fd.set('attachments', JSON.stringify(list));
+    attAction(fd);
+    setViewing((v) => (v && v.id === item.id ? { ...v, attachments: list } : v));
+  }
+  function addLink(item) {
+    const url = linkUrl.trim();
+    if (!url) return;
+    const next = [...(item.attachments || []), { type: 'link', url, name: linkName.trim() }];
+    saveAttachments(item, next);
+    setLinkUrl('');
+    setLinkName('');
+  }
+  function removeLink(item, idx) {
+    const next = (item.attachments || []).filter((_, i) => i !== idx);
+    saveAttachments(item, next);
   }
   function onDrop(colId) {
     if (dragId) {
@@ -2471,6 +2498,41 @@ function ProductionView({ content, briefs, brands, campaigns, brandById, isComma
               <div style={cLbl}>Campaign</div>
               <div style={{ fontSize: 13, color: 'var(--text2)' }}>{camp ? camp.name : '—'}</div>
             </div>
+          </div>
+
+          {/* Attachments — Google Drive links for submission. Command + freelance. */}
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+            <div style={cLbl}>Attachments · Google Drive links</div>
+            {(c.attachments || []).length === 0 && (
+              <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 10 }}>No files attached yet. Paste a Google Drive share link below.</div>
+            )}
+            {(c.attachments || []).length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+                {(c.attachments || []).map((a, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 10px' }}>
+                    <span style={{ fontSize: 14 }}>🔗</span>
+                    <a href={a.url} target="_blank" rel="noreferrer" style={{ flex: 1, fontSize: 12.5, color: 'var(--text)', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={a.url}>
+                      {a.name || a.url}
+                    </a>
+                    <button type="button" className="btn bg" disabled={attBusy} onClick={() => removeLink(c, i)} style={{ fontSize: 11, padding: '3px 8px', color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }}>Remove</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <div style={{ flex: '2 1 260px' }}>
+                <input style={cInp} value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)}
+                  placeholder="https://drive.google.com/…"
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addLink(c); } }} />
+              </div>
+              <div style={{ flex: '1 1 160px' }}>
+                <input style={cInp} value={linkName} onChange={(e) => setLinkName(e.target.value)}
+                  placeholder="Label (optional)"
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addLink(c); } }} />
+              </div>
+              <button type="button" className={`btn bl ${attBusy ? 'loading' : ''}`} disabled={attBusy || !linkUrl.trim()} onClick={() => addLink(c)}>＋ Add link</button>
+            </div>
+            {attState?.error && <div style={{ fontSize: 12, color: '#ff6464', marginTop: 8 }}>{attState.error}</div>}
           </div>
 
           {isCommand && (
@@ -2591,7 +2653,7 @@ function ProductionView({ content, briefs, brands, campaigns, brandById, isComma
                     >
                       <div className="ap-card-t">{i.title}</div>
                       {i.body && <div style={{ fontSize: 11, color: 'var(--text3)', margin: '4px 0', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{i.body}</div>}
-                      <div className="ap-card-m"><span className="ap-chip" style={{ background: bc + '22', color: bc }}>{b?.name || 'Unassigned'}</span></div>
+                      <div className="ap-card-m"><span className="ap-chip" style={{ background: bc + '22', color: bc }}>{b?.name || 'Unassigned'}</span>{(i.attachments || []).length > 0 && <span className="ap-chip" style={{ background: 'var(--bg2)', color: 'var(--text3)', marginLeft: 6 }}>🔗 {(i.attachments || []).length}</span>}</div>
                       {isCommand && (
                         <div style={{ display: 'flex', gap: 5, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
                           {prevOf[i.status] && (
