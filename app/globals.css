@@ -74,9 +74,11 @@ a { color:inherit; text-decoration:none; }
   display:flex; align-items:center; gap:10px;
   padding:9px 10px; border-radius:var(--rs);
   font-size:13.5px; font-weight:500; color:var(--text2);
-  cursor:pointer; transition:background .12s, color .12s;
+  cursor:pointer; transition:background .12s, color .12s, transform .06s ease;
+  -webkit-tap-highlight-color: transparent; user-select:none;
 }
 .ni:hover { background:var(--bg-hover); color:var(--text); }
+.ni:active { transform: scale(.985); }
 .ni.on { background:var(--bg3); color:var(--text); font-weight:600; }
 .ni.on.g { box-shadow:inset 3px 0 0 var(--green); }
 .ni.on.b { box-shadow:inset 3px 0 0 var(--blue); }
@@ -328,8 +330,23 @@ a { color:inherit; text-decoration:none; }
   -webkit-tap-highlight-color: transparent; user-select:none;
 }
 .ni-kid:hover { background:var(--bg-hover); color:var(--text); }
-.ni-kid:active { transform: scale(.98); background:var(--bg3); color:var(--text); }
+.ni-kid:active { transform: scale(.97); background:var(--bg3); color:var(--text); }
 .ni-kid.on { color:var(--text); font-weight:600; background:var(--bg3); box-shadow: inset 2px 0 0 var(--pink); }
+.ni-kid.pulse { animation: navPulse .22s ease; }
+
+/* Click pulse — fires on tap regardless of how fast the button is released,
+   so there's always a visible "it registered" motion. */
+@keyframes navPulse {
+  0%   { transform: scale(1);   background: var(--pink); color:#fff; }
+  45%  { transform: scale(.96); background: var(--pink); color:#fff; }
+  100% { transform: scale(1); }
+}
+.ni.pulse { animation: navPulse .22s ease; border-radius:8px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ni-kid.pulse, .ni.pulse { animation: none; }
+  .ni-kid, .ni { transition: background .1s, color .1s; }
+}
 .ni-kid.soon { opacity:.65; }
 .kid-soon {
   margin-left:auto; font-size:9px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
