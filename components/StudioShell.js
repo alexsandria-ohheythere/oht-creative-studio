@@ -42,6 +42,7 @@ export default function StudioShell({ profile, email, content, brands = [], camp
   };
 
   const [active, setActive] = useState('dash');
+  const [clicked, setClicked] = useState(null); // id pulsing right now (click feedback)
   const [drawer, setDrawer] = useState(false);
   const [openGroups, setOpenGroups] = useState({}); // expandable sub-nav
 
@@ -74,16 +75,22 @@ export default function StudioShell({ profile, email, content, brands = [], camp
   const pendingCount = content.filter((c) => c.status === 'review').length;
 
   function go(id) {
-    // Set state immediately for instant feedback, then reflect it in the URL.
-    // Writing location.hash (instead of pushState) fires the 'hashchange'
-    // listener, so back/forward and the hash stay the single source of truth —
-    // this is what stops sub-nav items needing a second tap.
+    // 1. Instant motion feedback — fire a short pulse on the tapped item.
+    setClicked(id);
+    setTimeout(() => setClicked((c) => (c === id ? null : c)), 220);
+
+    // 2. Switch panels immediately so the UI reacts on this same frame.
     setActive(id);
     setDrawer(false);
+
+    // 3. Reflect it in the URL AFTER paint. Writing location.hash fires the
+    //    'hashchange' listener (which keeps back/forward + bookmarks working);
+    //    deferring it past the next frame means the panel change renders first
+    //    instead of waiting on a second, redundant render pass.
     if (typeof window !== 'undefined') {
       const target = `#${id}`;
       if (window.location.hash !== target) {
-        window.location.hash = id;
+        requestAnimationFrame(() => { window.location.hash = id; });
       }
     }
   }
@@ -136,7 +143,7 @@ export default function StudioShell({ profile, email, content, brands = [], camp
                 return (
                   <div key={n.id}>
                     <div
-                      className={`ni ${on ? 'on' : ''} ${n.flagship ? 'flagship' : ''}`}
+                      className={`ni ${on ? 'on' : ''} ${n.flagship ? 'flagship' : ''} ${clicked === (hasKids ? n.children[0].id : n.id) ? 'pulse' : ''}`}
                       style={on ? { boxShadow: `inset 3px 0 0 ${GROUP_COLOR[sec] || 'var(--pink)'}` } : {}}
                       onClick={() => go(hasKids ? (n.children[0].id) : n.id)}
                     >
@@ -159,7 +166,7 @@ export default function StudioShell({ profile, email, content, brands = [], camp
                         {n.children.map((c) => (
                           <div
                             key={c.id}
-                            className={`ni-kid ${active === c.id ? 'on' : ''} ${c.soon ? 'soon' : ''}`}
+                            className={`ni-kid ${active === c.id ? 'on' : ''} ${c.soon ? 'soon' : ''} ${clicked === c.id ? 'pulse' : ''}`}
                             onClick={() => go(c.id)}
                           >
                             {c.label}
