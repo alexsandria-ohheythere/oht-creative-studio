@@ -265,6 +265,41 @@ export async function setContentStatus(prevState, formData) {
   return res;
 }
 
+// Save the attachments list (Google Drive links) for a content item.
+// Attachments arrive as a JSON string: [{ type:'link', url, name }, ...]
+// Both command and brand-scoped freelancers can write (RLS decides), so a
+// freelancer like Tali can attach files for submission on her own brand.
+export async function setContentAttachments(prevState, formData) {
+  const id = nz(formData.get('id'));
+  if (!id) return { error: 'Missing content id.' };
+
+  let attachments = [];
+  try {
+    const raw = formData.get('attachments');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        attachments = parsed
+          .map((a) => ({
+            type: 'link',
+            url: (a?.url || '').toString().trim(),
+            name: (a?.name || '').toString().trim(),
+          }))
+          .filter((a) => a.url);
+      }
+    }
+  } catch {
+    return { error: 'Could not read the attachments list.' };
+  }
+
+  const supabase = await createClient();
+  const res = await writeBack(
+    supabase.from('content_items').update({ attachments }).eq('id', id)
+  );
+  if (res.ok) revalidatePath('/dashboard');
+  return res;
+}
+
 export async function deleteContent(prevState, formData) {
   const id = nz(formData.get('id'));
   if (!id) return { error: 'Missing content id.' };
