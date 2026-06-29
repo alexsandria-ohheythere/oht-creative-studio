@@ -22,7 +22,7 @@ export default async function DashboardPage() {
   // (The old select referenced owner_name/reach/etc. which don't exist.)
   const { data: content } = await supabase
     .from('content_items')
-    .select('id, brand_id, brief_id, campaign_id, title, body, status, created_at')
+    .select('id, brand_id, brief_id, campaign_id, title, body, status, attachments, created_at')
     .order('created_at', { ascending: false });
 
   // Pipeline upstream: ideas and briefs.
