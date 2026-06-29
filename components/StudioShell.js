@@ -227,7 +227,7 @@ export default function StudioShell({ profile, email, content, brands = [], camp
             )}
 
             {parentId === 'mc' && subView === 'assets' && (
-              <AssetLibrary assets={assets} content={content} brands={brands} brandColor={brandColor} isCommand={isCommand} />
+              <AssetLibrary assets={assets} content={content} briefs={briefs} brands={brands} brandColor={brandColor} isCommand={isCommand} />
             )}
 
             {parentId === 'publishing' && (
@@ -1718,7 +1718,7 @@ function ContentCenter({ content, ideas = [], briefs = [], brands = [], campaign
 
   if (tab === 'ideas') return <IdeasView ideas={ideas} brands={brands} campaigns={campaigns} brandById={brandById} isCommand={isCommand} />;
   if (tab === 'briefs') return <BriefsView briefs={briefs} ideas={ideas} brands={brands} brandById={brandById} isCommand={isCommand} />;
-  if (tab === 'assets') return <AssetLibrary assets={assets} content={content} brands={brands} brandColor={brandColor} isCommand={isCommand} />;
+  if (tab === 'assets') return <AssetLibrary assets={assets} content={content} briefs={briefs} brands={brands} brandColor={brandColor} isCommand={isCommand} />;
   return <ProductionView content={content} briefs={briefs} brands={brands} campaigns={campaigns} brandById={brandById} isCommand={isCommand} />;
 }
 
@@ -1763,7 +1763,7 @@ function kindFromFile(file) {
   return 'doc';
 }
 
-function AssetLibrary({ assets = [], content = [], brands = [], brandColor, isCommand }) {
+function AssetLibrary({ assets = [], content = [], briefs = [], brands = [], brandColor, isCommand }) {
   const [brandFilter, setBrandFilter] = useState('all');
   const [kindFilter, setKindFilter] = useState('all');
   const [uploading, setUploading] = useState(false);
@@ -1774,6 +1774,7 @@ function AssetLibrary({ assets = [], content = [], brands = [], brandColor, isCo
   const [delState, deleteAction] = useActionState(deleteAsset, {});
 
   const brandById = (id) => brands.find((b) => b.id === id) || null;
+  const briefById = (id) => briefs.find((b) => b.id === id) || null;
   const colorFor = (id) => {
     const b = brandById(id);
     return (b && b.color) || (b && brandColor ? brandColor(b.name) : '#9494AA');
@@ -1788,25 +1789,66 @@ function AssetLibrary({ assets = [], content = [], brands = [], brandColor, isCo
     return data.publicUrl;
   }
 
-  function fileName(storage_path = '') {
-    const base = storage_path.split('/').pop() || storage_path;
-    return base.replace(/^[\w-]+-\d{10,}-\w{3,6}\./, (m) => '.' + m.split('.').pop());
+  // Channel + format for a content item, inherited from its linked brief.
+  function chFmt(contentItem) {
+    const br = contentItem?.brief_id ? briefById(contentItem.brief_id) : null;
+    return {
+      channel: (br?.channel || '').trim() || 'Unsorted',
+      format: (br?.format || '').trim() || 'General',
+    };
+  }
+
+  // Build one unified list of "asset entries" from two sources:
+  //  (a) uploaded files in the assets table  (image | video | doc)
+  //  (b) Google Drive links attached on content items (kind: 'link')
+  // Each entry: { key, kind, brand_id, url, name, channel, format, contentTitle, assetRow? }
+  const entries = [];
+
+  // (a) uploaded assets — channel/format from their linked content's brief.
+  for (const a of assets) {
+    const ci = content.find((c) => c.id === a.content_id);
+    const { channel, format } = ci ? chFmt(ci) : { channel: 'Unsorted', format: 'General' };
+    entries.push({
+      key: `asset-${a.id}`,
+      kind: a.kind || 'doc',
+      brand_id: a.brand_id,
+      url: publicUrl(a.storage_path),
+      name: (a.storage_path || '').split('/').pop() || 'file',
+      channel, format,
+      contentTitle: ci?.title || null,
+      assetRow: a,
+    });
+  }
+
+  // (b) Drive links collated from Production attachments.
+  for (const ci of content) {
+    const list = Array.isArray(ci.attachments) ? ci.attachments : [];
+    const { channel, format } = chFmt(ci);
+    list.forEach((att, i) => {
+      if (!att?.url) return;
+      entries.push({
+        key: `link-${ci.id}-${i}`,
+        kind: 'link',
+        brand_id: ci.brand_id,
+        url: att.url,
+        name: att.name || att.url,
+        channel, format,
+        contentTitle: ci.title || null,
+        assetRow: null, // links are managed on the Production card, not deletable here
+      });
+    });
   }
 
   // Upload selected files to Storage, then record each as an assets row.
-  // brand_id comes from the active brand filter, or the user's single brand.
   async function handleUpload(fileList) {
     setUploadErr('');
     const files = Array.from(fileList || []);
     if (!files.length) return;
-
-    // Decide which brand these belong to.
     let targetBrand = brandFilter !== 'all' ? brandFilter : (brands.length === 1 ? brands[0].id : '');
     if (!targetBrand) {
       setUploadErr('Pick a brand tab first, then upload — so each file is tagged to the right brand.');
       return;
     }
-
     setUploading(true);
     try {
       const supabase = createBrowserClient();
@@ -1815,12 +1857,11 @@ function AssetLibrary({ assets = [], content = [], brands = [], brandColor, isCo
         const key = `${targetBrand}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`;
         const { error } = await supabase.storage.from(ASSET_BUCKET).upload(key, file, { upsert: true });
         if (error) throw error;
-
         const fd = new FormData();
         fd.set('brand_id', targetBrand);
         fd.set('storage_path', key);
         fd.set('kind', kindFromFile(file));
-        saveAction(fd); // server records the row + revalidates
+        saveAction(fd);
       }
     } catch (err) {
       setUploadErr(err.message || 'Upload failed.');
@@ -1837,26 +1878,41 @@ function AssetLibrary({ assets = [], content = [], brands = [], brandColor, isCo
     setConfirmId(null);
   }
 
-  // Apply filters.
-  const filtered = assets.filter((a) => {
-    if (brandFilter !== 'all' && a.brand_id !== brandFilter) return false;
-    if (kindFilter !== 'all' && a.kind !== kindFilter) return false;
+  // Counts (across the unified list) for the kind chips.
+  const counts = {
+    all: entries.length,
+    image: entries.filter((e) => e.kind === 'image').length,
+    video: entries.filter((e) => e.kind === 'video').length,
+    doc: entries.filter((e) => e.kind === 'doc').length,
+    link: entries.filter((e) => e.kind === 'link').length,
+  };
+
+  // Apply brand + kind filters.
+  const filtered = entries.filter((e) => {
+    if (brandFilter !== 'all' && e.brand_id !== brandFilter) return false;
+    if (kindFilter !== 'all' && e.kind !== kindFilter) return false;
     return true;
   });
 
-  const counts = {
-    all: assets.length,
-    image: assets.filter((a) => a.kind === 'image').length,
-    video: assets.filter((a) => a.kind === 'video').length,
-    doc: assets.filter((a) => a.kind === 'doc').length,
-  };
+  // Group by Channel → Format.
+  const byChannel = {};
+  for (const e of filtered) {
+    (byChannel[e.channel] ||= {});
+    (byChannel[e.channel][e.format] ||= []).push(e);
+  }
+  // Channel order: known channels first (by CHANNEL_COLOR), then alpha, Unsorted last.
+  const channelKeys = Object.keys(byChannel).sort((a, b) => {
+    if (a === 'Unsorted') return 1;
+    if (b === 'Unsorted') return -1;
+    return a.localeCompare(b);
+  });
 
   return (
     <>
       <div className="ph">
         <div>
           <div className="pt">Assets</div>
-          <div className="ps">Every finished file in one library — filter by brand and type, upload new work, and link it back to the content it belongs to.</div>
+          <div className="ps">Every finished file and submitted Drive link in one library — grouped by channel and format, filterable by brand and type.</div>
         </div>
         {isCommand && (
           <label className="btn bl" style={{ cursor: uploading ? 'default' : 'pointer', opacity: uploading ? 0.6 : 1 }}>
@@ -1873,17 +1929,11 @@ function AssetLibrary({ assets = [], content = [], brands = [], brandColor, isCo
         )}
       </div>
 
-      {uploadErr && (
-        <div style={{ fontSize: 12, color: '#ff6464', marginBottom: 12 }}>{uploadErr}</div>
-      )}
-      {saveState?.error && (
-        <div style={{ fontSize: 12, color: '#ff6464', marginBottom: 12 }}>{saveState.error}</div>
-      )}
-      {delState?.error && (
-        <div style={{ fontSize: 12, color: '#ff6464', marginBottom: 12 }}>{delState.error}</div>
-      )}
+      {uploadErr && <div style={{ fontSize: 12, color: '#ff6464', marginBottom: 12 }}>{uploadErr}</div>}
+      {saveState?.error && <div style={{ fontSize: 12, color: '#ff6464', marginBottom: 12 }}>{saveState.error}</div>}
+      {delState?.error && <div style={{ fontSize: 12, color: '#ff6464', marginBottom: 12 }}>{delState.error}</div>}
 
-      {/* Brand filter chips (only when more than one brand is visible) */}
+      {/* Brand filter chips */}
       {brands.length > 1 && (
         <div className="cvws" style={{ display: 'flex', flexWrap: 'wrap', width: 'fit-content', maxWidth: '100%', marginBottom: 10 }}>
           <div className={`cvw ${brandFilter === 'all' ? 'on' : ''}`} onClick={() => setBrandFilter('all')}>All brands</div>
@@ -1912,62 +1962,85 @@ function AssetLibrary({ assets = [], content = [], brands = [], brandColor, isCo
             </div>
           );
         })}
+        <div className={`cvw ${kindFilter === 'link' ? 'on' : ''}`} onClick={() => setKindFilter('link')}
+          style={kindFilter === 'link' ? { color: '#AED8FF', background: '#AED8FF22' } : { color: '#AED8FF' }}>
+          🔗 Links ({counts.link})
+        </div>
       </div>
 
       {filtered.length === 0 ? (
         <ComingSoon
           icon="🗂"
-          title={assets.length === 0 ? 'No assets yet' : 'Nothing matches this filter'}
-          body={assets.length === 0
-            ? (isCommand
-                ? 'Upload finished images, videos and docs here and they become a searchable library — filterable by brand and type, and linkable to the content they belong to.'
-                : 'No assets have been uploaded for your brand yet.')
+          title={entries.length === 0 ? 'No assets yet' : 'Nothing matches this filter'}
+          body={entries.length === 0
+            ? 'Upload finished files here, or attach Google Drive links on a Production card — both land here, grouped by channel and format.'
             : 'Try a different brand or type filter to see more.'}
         />
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 14 }}>
-          {filtered.map((a) => {
-            const meta = KIND_META[a.kind] || KIND_META.doc;
-            const url = publicUrl(a.storage_path);
-            const c = colorFor(a.brand_id);
-            const bName = (brandById(a.brand_id) || {}).name || 'Unassigned';
-            const linked = content.find((ci) => ci.id === a.content_id);
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+          {channelKeys.map((ch) => {
+            const cc = CHANNEL_COLOR[ch] || '#9494AA';
+            const formatKeys = Object.keys(byChannel[ch]).sort((a, b) => a.localeCompare(b));
+            const chTotal = formatKeys.reduce((s, f) => s + byChannel[ch][f].length, 0);
             return (
-              <div key={a.id} style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', background: 'var(--bg2)', display: 'flex', flexDirection: 'column' }}>
-                {/* Preview */}
-                <div style={{ position: 'relative', height: 130, background: 'var(--bg3)', display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
-                  {a.kind === 'image' ? (
-                    <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : a.kind === 'video' ? (
-                    <video src={url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted preload="metadata" />
-                  ) : (
-                    <div style={{ fontSize: 38 }}>{meta.icon}</div>
-                  )}
-                  <span style={{ position: 'absolute', top: 8, left: 8, fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: '#fff', background: meta.color, padding: '2px 7px', borderRadius: 20 }}>{a.kind}</span>
-                  {isCommand && (
-                    confirmId === a.id ? (
-                      <span style={{ position: 'absolute', top: 6, right: 6, display: 'flex', gap: 4 }}>
-                        <button type="button" onClick={() => removeAsset(a)} title="Confirm delete"
-                          style={{ width: 22, height: 22, borderRadius: '50%', background: '#ff6464', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 12 }}>✓</button>
-                        <button type="button" onClick={() => setConfirmId(null)} title="Cancel"
-                          style={{ width: 22, height: 22, borderRadius: '50%', background: 'rgba(0,0,0,.6)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 12 }}>×</button>
-                      </span>
-                    ) : (
-                      <button type="button" onClick={() => setConfirmId(a.id)} title="Delete asset"
-                        style={{ position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: '50%', background: 'rgba(0,0,0,.55)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 12 }}>🗑</button>
-                    )
-                  )}
+              <div key={ch}>
+                {/* Channel header */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, paddingBottom: 8, borderBottom: `2px solid ${cc}33` }}>
+                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: cc }} />
+                  <span style={{ fontSize: 15, fontWeight: 700, color: cc }}>{ch}</span>
+                  <span style={{ fontSize: 12, color: 'var(--text3)' }}>· {chTotal}</span>
                 </div>
-                {/* Meta */}
-                <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <span className="sb2" style={{ background: c + '22', color: c, alignSelf: 'flex-start', fontSize: 10 }}>{bName}</span>
-                  {linked && (
-                    <div style={{ fontSize: 11, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={linked.title}>
-                      ↳ {linked.title}
+
+                {formatKeys.map((fmt) => (
+                  <div key={fmt} style={{ marginBottom: 18 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text3)', marginBottom: 10 }}>
+                      {fmt} <span style={{ color: 'var(--text3)', fontWeight: 500 }}>({byChannel[ch][fmt].length})</span>
                     </div>
-                  )}
-                  <a href={url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: 'var(--text2)', textDecoration: 'none' }}>Open ↗</a>
-                </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 14 }}>
+                      {byChannel[ch][fmt].map((e) => {
+                        const meta = e.kind === 'link' ? { label: 'Link', icon: '🔗', color: '#AED8FF' } : (KIND_META[e.kind] || KIND_META.doc);
+                        const c = colorFor(e.brand_id);
+                        const bName = (brandById(e.brand_id) || {}).name || 'Unassigned';
+                        return (
+                          <div key={e.key} style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', background: 'var(--bg2)', display: 'flex', flexDirection: 'column' }}>
+                            <div style={{ position: 'relative', height: 130, background: 'var(--bg3)', display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
+                              {e.kind === 'image' ? (
+                                <img src={e.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              ) : e.kind === 'video' ? (
+                                <video src={e.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted preload="metadata" />
+                              ) : (
+                                <div style={{ fontSize: 38 }}>{meta.icon}</div>
+                              )}
+                              <span style={{ position: 'absolute', top: 8, left: 8, fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: '#fff', background: meta.color, padding: '2px 7px', borderRadius: 20 }}>{e.kind}</span>
+                              {isCommand && e.assetRow && (
+                                confirmId === e.assetRow.id ? (
+                                  <span style={{ position: 'absolute', top: 6, right: 6, display: 'flex', gap: 4 }}>
+                                    <button type="button" onClick={() => removeAsset(e.assetRow)} title="Confirm delete"
+                                      style={{ width: 22, height: 22, borderRadius: '50%', background: '#ff6464', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 12 }}>✓</button>
+                                    <button type="button" onClick={() => setConfirmId(null)} title="Cancel"
+                                      style={{ width: 22, height: 22, borderRadius: '50%', background: 'rgba(0,0,0,.6)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 12 }}>×</button>
+                                  </span>
+                                ) : (
+                                  <button type="button" onClick={() => setConfirmId(e.assetRow.id)} title="Delete asset"
+                                    style={{ position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: '50%', background: 'rgba(0,0,0,.55)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 12 }}>🗑</button>
+                                )
+                              )}
+                            </div>
+                            <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                              <span className="sb2" style={{ background: c + '22', color: c, alignSelf: 'flex-start', fontSize: 10 }}>{bName}</span>
+                              {e.contentTitle && (
+                                <div style={{ fontSize: 11, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={e.contentTitle}>
+                                  ↳ {e.contentTitle}
+                                </div>
+                              )}
+                              <a href={e.url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: 'var(--text2)', textDecoration: 'none' }}>Open ↗</a>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
             );
           })}
