@@ -2401,6 +2401,9 @@ function BriefsView({ briefs, ideas, brands, brandById, isCommand }) {
 // ------------------------------------------------------------ PRODUCTION
 function ProductionView({ content, briefs, brands, campaigns, brandById, isCommand }) {
   const [editing, setEditing] = useState(null);
+  const [viewing, setViewing] = useState(null); // card opened for detail (read-only)
+  const [dragId, setDragId] = useState(null);    // card being dragged
+  const [overCol, setOverCol] = useState(null);  // column currently hovered during drag
   const [state, formAction, pending] = useActionState(saveContent, {});
   const [, statusAction, statusBusy] = useActionState(setContentStatus, {});
   const [delState, deleteAction, deletingItem] = useActionState(deleteContent, {});
@@ -2415,6 +2418,76 @@ function ProductionView({ content, briefs, brands, campaigns, brandById, isComma
   ];
   const nextOf = { command_review: 'in_production', in_production: 'review', review: 'approved' };
   const prevOf = { in_production: 'command_review', review: 'in_production', approved: 'review' };
+  const colById = (id) => COLS.find((c) => c.id === id);
+
+  // Move a card to a new status by submitting the existing server action.
+  function moveTo(id, status) {
+    const fd = new FormData();
+    fd.set('id', id);
+    fd.set('status', status);
+    statusAction(fd);
+  }
+  function onDrop(colId) {
+    if (dragId) {
+      const item = content.find((c) => c.id === dragId);
+      if (item && item.status !== colId) moveTo(dragId, colId);
+    }
+    setDragId(null);
+    setOverCol(null);
+  }
+
+  if (viewing) {
+    const c = viewing;
+    const b = brandById(c.brand_id);
+    const bc = b?.color || '#9494AA';
+    const st = colById(c.status) || COLS[0];
+    const brief = briefs.find((x) => x.id === c.brief_id);
+    const camp = campaigns.find((x) => x.id === c.campaign_id);
+    return (
+      <>
+        <div className="ph">
+          <div><div className="pt">{c.title || 'Untitled'}</div><div className="ps">Content detail</div></div>
+          <button type="button" className="btn bg" onClick={() => setViewing(null)}>← Back to board</button>
+        </div>
+        <div className="sc" style={{ padding: 22, maxWidth: 680, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span className="ap-chip" style={{ background: bc + '22', color: bc }}>{b?.name || 'Unassigned'}</span>
+            <span className="ap-chip" style={{ background: st.color + '22', color: st.color }}>● {st.label}</span>
+          </div>
+
+          <div>
+            <div style={cLbl}>Body / copy</div>
+            <div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+              {c.body || <span style={{ color: 'var(--text3)' }}>No copy yet.</span>}
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div>
+              <div style={cLbl}>From brief</div>
+              <div style={{ fontSize: 13, color: 'var(--text2)' }}>{brief ? `${brandById(brief.brand_id)?.name || '?'}${brief.channel ? ' · ' + brief.channel : ''}` : '—'}</div>
+            </div>
+            <div>
+              <div style={cLbl}>Campaign</div>
+              <div style={{ fontSize: 13, color: 'var(--text2)' }}>{camp ? camp.name : '—'}</div>
+            </div>
+          </div>
+
+          {isCommand && (
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+              <button type="button" className="btn bl" onClick={() => { setViewing(null); setEditing(c); }}>✎ Edit</button>
+              {prevOf[c.status] && (
+                <button type="button" className="btn bg" disabled={statusBusy} onClick={() => { moveTo(c.id, prevOf[c.status]); setViewing({ ...c, status: prevOf[c.status] }); }}>← {colById(prevOf[c.status])?.label}</button>
+              )}
+              {nextOf[c.status] && (
+                <button type="button" className="btn bg" disabled={statusBusy} style={{ color: '#64BC46' }} onClick={() => { moveTo(c.id, nextOf[c.status]); setViewing({ ...c, status: nextOf[c.status] }); }}>{colById(nextOf[c.status])?.label} →</button>
+              )}
+            </div>
+          )}
+        </div>
+      </>
+    );
+  }
 
   if (editing) {
     const c = editing;
@@ -2475,28 +2548,52 @@ function ProductionView({ content, briefs, brands, campaigns, brandById, isComma
         <div className="ap-note" style={{ borderColor: 'rgba(255,100,100,.35)', color: '#ff6464' }}>{state?.error || delState?.error}</div>
       )}
 
+      {isCommand && (
+        <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 10 }}>
+          Drag a card between columns to change its status, or click it to view details.
+        </div>
+      )}
+
       <div className="ap-board" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
         {COLS.map((col) => {
           const items = content.filter((c) => c.status === col.id);
+          const isOver = overCol === col.id && dragId;
           return (
-            <div className="ap-col" key={col.id}>
+            <div
+              className="ap-col"
+              key={col.id}
+              onDragOver={isCommand ? (e) => { e.preventDefault(); if (overCol !== col.id) setOverCol(col.id); } : undefined}
+              onDragLeave={isCommand ? (e) => { if (e.currentTarget === e.target) setOverCol((o) => (o === col.id ? null : o)); } : undefined}
+              onDrop={isCommand ? (e) => { e.preventDefault(); onDrop(col.id); } : undefined}
+              style={isOver ? { outline: `2px dashed ${col.color}`, outlineOffset: -2, background: col.color + '0d', borderRadius: 12 } : {}}
+            >
               <div className="ap-col-hd">
                 <span className="ap-col-dot" style={{ background: col.color }} />
                 <span className="ap-col-t" style={{ color: col.color }}>{col.label}</span>
                 <span className="ap-col-n">{items.length}</span>
               </div>
               <div className="ap-col-bd">
-                {items.length === 0 && <div className="ap-empty">—</div>}
+                {items.length === 0 && <div className="ap-empty">{isOver ? 'Drop here' : '—'}</div>}
                 {items.map((i) => {
                   const b = brandById(i.brand_id);
                   const bc = b?.color || '#9494AA';
+                  const isDragging = dragId === i.id;
                   return (
-                    <div className="ap-card" key={i.id}>
+                    <div
+                      className="ap-card"
+                      key={i.id}
+                      draggable={isCommand}
+                      onDragStart={isCommand ? (e) => { setDragId(i.id); e.dataTransfer.effectAllowed = 'move'; } : undefined}
+                      onDragEnd={isCommand ? () => { setDragId(null); setOverCol(null); } : undefined}
+                      onClick={() => setViewing(i)}
+                      style={{ cursor: 'pointer', opacity: isDragging ? 0.4 : 1, transition: 'opacity .12s, box-shadow .12s', ...(isCommand ? {} : {}) }}
+                      title="Click to open · drag to move"
+                    >
                       <div className="ap-card-t">{i.title}</div>
                       {i.body && <div style={{ fontSize: 11, color: 'var(--text3)', margin: '4px 0', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{i.body}</div>}
                       <div className="ap-card-m"><span className="ap-chip" style={{ background: bc + '22', color: bc }}>{b?.name || 'Unassigned'}</span></div>
                       {isCommand && (
-                        <div style={{ display: 'flex', gap: 5, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', gap: 5, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
                           {prevOf[i.status] && (
                             <form action={statusAction}><input type="hidden" name="id" value={i.id} /><input type="hidden" name="status" value={prevOf[i.status]} />
                               <button className="btn bg" type="submit" disabled={statusBusy} style={{ fontSize: 11, padding: '3px 7px' }}>←</button></form>
