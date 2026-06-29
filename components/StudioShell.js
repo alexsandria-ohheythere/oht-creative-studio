@@ -716,7 +716,7 @@ function CampaignForm({ campaign, brands = [], onDone, onCancel }) {
         </div>
 
         <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-          <button className="btn bl" type="submit" disabled={pending}>
+          <button className={`btn bl ${pending ? 'loading' : ''}`} type="submit" disabled={pending}>
             {pending ? 'Saving…' : campaign ? 'Save changes' : 'Create campaign'}
           </button>
           <button className="btn bg" type="button" onClick={onCancel}>Cancel</button>
@@ -2108,7 +2108,7 @@ function IdeasView({ ideas, brands, campaigns, brandById, isCommand }) {
             </select>
           </CField>
           <div style={{ display: 'flex', gap: 10 }}>
-            <button className="btn bl" type="submit" disabled={pending}>{pending ? 'Saving…' : editing ? 'Save' : 'Create idea'}</button>
+            <button className={`btn bl ${pending ? 'loading' : ''}`} type="submit" disabled={pending}>{pending ? 'Saving…' : editing ? 'Save' : 'Create idea'}</button>
             <button className="btn bg" type="button" onClick={() => { setShowForm(false); setEditing(null); }}>Cancel</button>
           </div>
         </form>
@@ -2477,10 +2477,10 @@ function ProductionView({ content, briefs, brands, campaigns, brandById, isComma
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', borderTop: '1px solid var(--border)', paddingTop: 16 }}>
               <button type="button" className="btn bl" onClick={() => { setViewing(null); setEditing(c); }}>✎ Edit</button>
               {prevOf[c.status] && (
-                <button type="button" className="btn bg" disabled={statusBusy} onClick={() => { moveTo(c.id, prevOf[c.status]); setViewing({ ...c, status: prevOf[c.status] }); }}>← {colById(prevOf[c.status])?.label}</button>
+                <button type="button" className={`btn bg ${statusBusy ? 'loading' : ''}`} disabled={statusBusy} onClick={() => { moveTo(c.id, prevOf[c.status]); setViewing({ ...c, status: prevOf[c.status] }); }}>← {colById(prevOf[c.status])?.label}</button>
               )}
               {nextOf[c.status] && (
-                <button type="button" className="btn bg" disabled={statusBusy} style={{ color: '#64BC46' }} onClick={() => { moveTo(c.id, nextOf[c.status]); setViewing({ ...c, status: nextOf[c.status] }); }}>{colById(nextOf[c.status])?.label} →</button>
+                <button type="button" className={`btn bg ${statusBusy ? 'loading' : ''}`} disabled={statusBusy} style={{ color: '#64BC46' }} onClick={() => { moveTo(c.id, nextOf[c.status]); setViewing({ ...c, status: nextOf[c.status] }); }}>{colById(nextOf[c.status])?.label} →</button>
               )}
             </div>
           )}
@@ -2529,7 +2529,7 @@ function ProductionView({ content, briefs, brands, campaigns, brandById, isComma
           </div>
           <CField label="Body / copy"><textarea style={cTa(140)} name="body" defaultValue={c.body || ''} placeholder="Caption, script, or working copy." /></CField>
           <div style={{ display: 'flex', gap: 10 }}>
-            <button className="btn bl" type="submit" disabled={pending}>{pending ? 'Saving…' : 'Save'}</button>
+            <button className={`btn bl ${pending ? 'loading' : ''}`} type="submit" disabled={pending}>{pending ? 'Saving…' : 'Save'}</button>
             <button className="btn bg" type="button" onClick={() => setEditing(null)}>Cancel</button>
           </div>
         </form>
