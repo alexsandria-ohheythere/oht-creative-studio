@@ -128,15 +128,39 @@ a { color:inherit; text-decoration:none; }
 
 /* ===================== BUTTONS ===================== */
 .btn {
+  position:relative;
   border:1px solid var(--border); border-radius:var(--rs);
   padding:8px 14px; font-size:13px; font-weight:600; cursor:pointer;
-  background:var(--bg3); color:var(--text); transition:filter .12s, background .12s;
+  background:var(--bg3); color:var(--text);
+  transition: filter .1s ease, background .1s ease, transform .05s ease, box-shadow .1s ease, opacity .1s ease;
+  -webkit-tap-highlight-color: transparent; user-select:none;
 }
 .btn:hover { background:var(--bg-hover); }
+/* Immediate pressed feedback (0ms, pure CSS — fires before any re-render) */
+.btn:active:not(:disabled) { transform: scale(.95); filter: brightness(.86); box-shadow: inset 0 1px 4px rgba(0,0,0,.3); }
 .btn.bg { background:var(--bg3); color:var(--text); }
+.btn.bg:active:not(:disabled) { background: var(--bg-hover); }
 .btn.bl { background:var(--lime); color:#111; border-color:var(--lime); }
 .btn.bl:hover { filter:brightness(1.08); }
+.btn.bl:active:not(:disabled) { filter: brightness(.9); }
 .btn.bsm { padding:5px 10px; font-size:12px; }
+
+/* Loading / disabled state — block duplicate clicks, show it's working */
+.btn:disabled { cursor: default; opacity: .65; }
+.btn.loading { color: transparent !important; pointer-events: none; }
+.btn.loading::after {
+  content: ""; position: absolute; inset: 0; margin: auto;
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid currentColor; border-top-color: transparent;
+  color: var(--text); animation: btnSpin .6s linear infinite;
+}
+.btn.bl.loading::after { color: #111; }
+@keyframes btnSpin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .btn { transition: background .1s, filter .1s; }
+  .btn:active:not(:disabled) { transform: none; }
+}
 
 /* ===================== PAGE HEADERS ===================== */
 .ph { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:22px; }
