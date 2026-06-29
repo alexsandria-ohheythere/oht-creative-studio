@@ -4,6 +4,7 @@ import { useState, useEffect, useActionState } from 'react';
 import appConfig from '../config/app.json';
 import { saveBrand, archiveBrand, deleteBrand } from '../app/dashboard/brand-actions';
 import { saveCampaign, deleteCampaign } from '../app/dashboard/campaign-actions';
+import { saveAsset, deleteAsset } from '../app/dashboard/asset-actions';
 import {
   saveIdea, deleteIdea, promoteIdeaToBrief,
   saveBrief, deleteBrief, startProduction,
@@ -24,7 +25,7 @@ function initials(name = '') {
   return name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 }
 
-export default function StudioShell({ profile, email, content, brands = [], campaigns = [], ideas = [], briefs = [] }) {
+export default function StudioShell({ profile, email, content, brands = [], campaigns = [], ideas = [], briefs = [], assets = [] }) {
   const role = profile.role === 'command' ? 'command' : 'freelance';
   const visibleNav = NAV.filter((n) => n.roles.includes(role));
 
@@ -190,7 +191,7 @@ export default function StudioShell({ profile, email, content, brands = [], camp
             <div className="tb-title">{activeLabel}</div>
             <div className="tb-search"><span>⌕</span><span>Search everything…</span><span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text3)', border: '1px solid var(--border)', padding: '1px 5px', borderRadius: 3 }}>⌘K</span></div>
             <div className="tb-acts">
-              {isCommand && <button className="btn bg">⊕ New Asset</button>}
+              {isCommand && <button type="button" className="btn bg" onClick={() => go('content.assets')}>⊕ New Asset</button>}
               <button type="button" className="btn bl" onClick={() => go('strategist')}>✦ Ask the OS</button>
             </div>
           </div>
@@ -209,7 +210,11 @@ export default function StudioShell({ profile, email, content, brands = [], camp
             )}
 
             {parentId === 'content' && (
-              <ContentCenter content={content} ideas={ideas} briefs={briefs} brands={brands} campaigns={campaigns} isCommand={isCommand} subView={subView} />
+              <ContentCenter content={content} ideas={ideas} briefs={briefs} brands={brands} campaigns={campaigns} assets={assets} isCommand={isCommand} brandColor={brandColor} subView={subView} />
+            )}
+
+            {parentId === 'mc' && subView === 'assets' && (
+              <AssetLibrary assets={assets} content={content} brands={brands} brandColor={brandColor} isCommand={isCommand} />
             )}
 
             {parentId === 'publishing' && (
@@ -1694,12 +1699,13 @@ function BrandForm({ brand, onDone, onCancel }) {
 //   briefs(brand_id, idea_id, channel, brief, status draft|approved|archived)
 //   content_items(brand_id, brief_id, campaign_id, title, body,
 //                 status in_production|review|approved)
-function ContentCenter({ content, ideas = [], briefs = [], brands = [], campaigns = [], isCommand, subView }) {
-  const tab = ['ideas', 'briefs', 'production'].includes(subView) ? subView : 'ideas';
+function ContentCenter({ content, ideas = [], briefs = [], brands = [], campaigns = [], assets = [], isCommand, brandColor, subView }) {
+  const tab = ['ideas', 'briefs', 'production', 'assets'].includes(subView) ? subView : 'ideas';
   const brandById = (id) => brands.find((b) => b.id === id) || null;
 
   if (tab === 'ideas') return <IdeasView ideas={ideas} brands={brands} campaigns={campaigns} brandById={brandById} isCommand={isCommand} />;
   if (tab === 'briefs') return <BriefsView briefs={briefs} ideas={ideas} brands={brands} brandById={brandById} isCommand={isCommand} />;
+  if (tab === 'assets') return <AssetLibrary assets={assets} content={content} brands={brands} brandColor={brandColor} isCommand={isCommand} />;
   return <ProductionView content={content} briefs={briefs} brands={brands} campaigns={campaigns} brandById={brandById} isCommand={isCommand} />;
 }
 
@@ -1719,6 +1725,244 @@ const STATUS_COLOR = {
   archived: '#6a6a7a',
   command_review: '#EE268C', in_production: '#ffbb44', review: '#78b8e8',
 };
+
+// =====================================================================
+// ASSET LIBRARY — browse, upload & manage finished files per brand.
+// Reads public.assets (id, brand_id, content_id, storage_path, kind).
+// Files live in the 'brand-assets' Storage bucket; storage_path is the
+// object key. Upload happens on the client (same pattern as the Brand
+// form), then saveAsset() records the row through the user's session so
+// RLS decides who can write.
+// =====================================================================
+const ASSET_BUCKET = 'brand-assets';
+const KIND_META = {
+  image: { label: 'Images', icon: '🖼', color: '#EE268C' },
+  video: { label: 'Videos', icon: '🎬', color: '#64BC46' },
+  doc: { label: 'Docs', icon: '📄', color: '#AED8FF' },
+};
+
+function kindFromFile(file) {
+  const name = file.name || '';
+  const mime = file.type || '';
+  const ext = (name.split('.').pop() || '').toLowerCase();
+  if (mime.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'avif', 'heic'].includes(ext)) return 'image';
+  if (mime.startsWith('video/') || ['mp4', 'mov', 'webm', 'm4v', 'avi', 'mkv'].includes(ext)) return 'video';
+  return 'doc';
+}
+
+function AssetLibrary({ assets = [], content = [], brands = [], brandColor, isCommand }) {
+  const [brandFilter, setBrandFilter] = useState('all');
+  const [kindFilter, setKindFilter] = useState('all');
+  const [uploading, setUploading] = useState(false);
+  const [uploadErr, setUploadErr] = useState('');
+  const [confirmId, setConfirmId] = useState(null);
+
+  const [saveState, saveAction] = useActionState(saveAsset, {});
+  const [delState, deleteAction] = useActionState(deleteAsset, {});
+
+  const brandById = (id) => brands.find((b) => b.id === id) || null;
+  const colorFor = (id) => {
+    const b = brandById(id);
+    return (b && b.color) || (b && brandColor ? brandColor(b.name) : '#9494AA');
+  };
+
+  // Resolve a public URL for an object key in the bucket.
+  function publicUrl(storage_path) {
+    if (!storage_path) return '';
+    if (/^https?:\/\//.test(storage_path)) return storage_path; // tolerate full URLs
+    const supabase = createBrowserClient();
+    const { data } = supabase.storage.from(ASSET_BUCKET).getPublicUrl(storage_path);
+    return data.publicUrl;
+  }
+
+  function fileName(storage_path = '') {
+    const base = storage_path.split('/').pop() || storage_path;
+    return base.replace(/^[\w-]+-\d{10,}-\w{3,6}\./, (m) => '.' + m.split('.').pop());
+  }
+
+  // Upload selected files to Storage, then record each as an assets row.
+  // brand_id comes from the active brand filter, or the user's single brand.
+  async function handleUpload(fileList) {
+    setUploadErr('');
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+
+    // Decide which brand these belong to.
+    let targetBrand = brandFilter !== 'all' ? brandFilter : (brands.length === 1 ? brands[0].id : '');
+    if (!targetBrand) {
+      setUploadErr('Pick a brand tab first, then upload — so each file is tagged to the right brand.');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const supabase = createBrowserClient();
+      for (const file of files) {
+        const ext = (file.name.split('.').pop() || 'bin').toLowerCase();
+        const key = `${targetBrand}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`;
+        const { error } = await supabase.storage.from(ASSET_BUCKET).upload(key, file, { upsert: true });
+        if (error) throw error;
+
+        const fd = new FormData();
+        fd.set('brand_id', targetBrand);
+        fd.set('storage_path', key);
+        fd.set('kind', kindFromFile(file));
+        saveAction(fd); // server records the row + revalidates
+      }
+    } catch (err) {
+      setUploadErr(err.message || 'Upload failed.');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function removeAsset(asset) {
+    const fd = new FormData();
+    fd.set('id', asset.id);
+    fd.set('storage_path', asset.storage_path || '');
+    deleteAction(fd);
+    setConfirmId(null);
+  }
+
+  // Apply filters.
+  const filtered = assets.filter((a) => {
+    if (brandFilter !== 'all' && a.brand_id !== brandFilter) return false;
+    if (kindFilter !== 'all' && a.kind !== kindFilter) return false;
+    return true;
+  });
+
+  const counts = {
+    all: assets.length,
+    image: assets.filter((a) => a.kind === 'image').length,
+    video: assets.filter((a) => a.kind === 'video').length,
+    doc: assets.filter((a) => a.kind === 'doc').length,
+  };
+
+  return (
+    <>
+      <div className="ph">
+        <div>
+          <div className="pt">Assets</div>
+          <div className="ps">Every finished file in one library — filter by brand and type, upload new work, and link it back to the content it belongs to.</div>
+        </div>
+        {isCommand && (
+          <label className="btn bl" style={{ cursor: uploading ? 'default' : 'pointer', opacity: uploading ? 0.6 : 1 }}>
+            {uploading ? 'Uploading…' : '＋ Upload assets'}
+            <input
+              type="file"
+              multiple
+              accept="image/*,video/*,application/pdf,.pdf,.doc,.docx,.ppt,.pptx,.zip"
+              onChange={(e) => { handleUpload(e.target.files); e.target.value = ''; }}
+              style={{ display: 'none' }}
+              disabled={uploading}
+            />
+          </label>
+        )}
+      </div>
+
+      {uploadErr && (
+        <div style={{ fontSize: 12, color: '#ff6464', marginBottom: 12 }}>{uploadErr}</div>
+      )}
+      {saveState?.error && (
+        <div style={{ fontSize: 12, color: '#ff6464', marginBottom: 12 }}>{saveState.error}</div>
+      )}
+      {delState?.error && (
+        <div style={{ fontSize: 12, color: '#ff6464', marginBottom: 12 }}>{delState.error}</div>
+      )}
+
+      {/* Brand filter chips (only when more than one brand is visible) */}
+      {brands.length > 1 && (
+        <div className="cvws" style={{ display: 'flex', flexWrap: 'wrap', width: 'fit-content', maxWidth: '100%', marginBottom: 10 }}>
+          <div className={`cvw ${brandFilter === 'all' ? 'on' : ''}`} onClick={() => setBrandFilter('all')}>All brands</div>
+          {brands.map((b) => {
+            const on = brandFilter === b.id;
+            const c = b.color || (brandColor ? brandColor(b.name) : '#9494AA');
+            return (
+              <div key={b.id} className={`cvw ${on ? 'on' : ''}`} onClick={() => setBrandFilter(b.id)}
+                style={on ? { color: c, background: c + '22' } : { color: c }}>
+                {b.name}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Kind filter chips */}
+      <div className="cvws" style={{ display: 'flex', flexWrap: 'wrap', width: 'fit-content', maxWidth: '100%', marginBottom: 16 }}>
+        <div className={`cvw ${kindFilter === 'all' ? 'on' : ''}`} onClick={() => setKindFilter('all')}>All ({counts.all})</div>
+        {Object.entries(KIND_META).map(([k, meta]) => {
+          const on = kindFilter === k;
+          return (
+            <div key={k} className={`cvw ${on ? 'on' : ''}`} onClick={() => setKindFilter(k)}
+              style={on ? { color: meta.color, background: meta.color + '22' } : { color: meta.color }}>
+              {meta.icon} {meta.label} ({counts[k]})
+            </div>
+          );
+        })}
+      </div>
+
+      {filtered.length === 0 ? (
+        <ComingSoon
+          icon="🗂"
+          title={assets.length === 0 ? 'No assets yet' : 'Nothing matches this filter'}
+          body={assets.length === 0
+            ? (isCommand
+                ? 'Upload finished images, videos and docs here and they become a searchable library — filterable by brand and type, and linkable to the content they belong to.'
+                : 'No assets have been uploaded for your brand yet.')
+            : 'Try a different brand or type filter to see more.'}
+        />
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 14 }}>
+          {filtered.map((a) => {
+            const meta = KIND_META[a.kind] || KIND_META.doc;
+            const url = publicUrl(a.storage_path);
+            const c = colorFor(a.brand_id);
+            const bName = (brandById(a.brand_id) || {}).name || 'Unassigned';
+            const linked = content.find((ci) => ci.id === a.content_id);
+            return (
+              <div key={a.id} style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', background: 'var(--bg2)', display: 'flex', flexDirection: 'column' }}>
+                {/* Preview */}
+                <div style={{ position: 'relative', height: 130, background: 'var(--bg3)', display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
+                  {a.kind === 'image' ? (
+                    <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : a.kind === 'video' ? (
+                    <video src={url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted preload="metadata" />
+                  ) : (
+                    <div style={{ fontSize: 38 }}>{meta.icon}</div>
+                  )}
+                  <span style={{ position: 'absolute', top: 8, left: 8, fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: '#fff', background: meta.color, padding: '2px 7px', borderRadius: 20 }}>{a.kind}</span>
+                  {isCommand && (
+                    confirmId === a.id ? (
+                      <span style={{ position: 'absolute', top: 6, right: 6, display: 'flex', gap: 4 }}>
+                        <button type="button" onClick={() => removeAsset(a)} title="Confirm delete"
+                          style={{ width: 22, height: 22, borderRadius: '50%', background: '#ff6464', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 12 }}>✓</button>
+                        <button type="button" onClick={() => setConfirmId(null)} title="Cancel"
+                          style={{ width: 22, height: 22, borderRadius: '50%', background: 'rgba(0,0,0,.6)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 12 }}>×</button>
+                      </span>
+                    ) : (
+                      <button type="button" onClick={() => setConfirmId(a.id)} title="Delete asset"
+                        style={{ position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: '50%', background: 'rgba(0,0,0,.55)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 12 }}>🗑</button>
+                    )
+                  )}
+                </div>
+                {/* Meta */}
+                <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <span className="sb2" style={{ background: c + '22', color: c, alignSelf: 'flex-start', fontSize: 10 }}>{bName}</span>
+                  {linked && (
+                    <div style={{ fontSize: 11, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={linked.title}>
+                      ↳ {linked.title}
+                    </div>
+                  )}
+                  <a href={url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: 'var(--text2)', textDecoration: 'none' }}>Open ↗</a>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+}
 
 // ----------------------------------------------------------------- IDEAS
 function IdeasView({ ideas, brands, campaigns, brandById, isCommand }) {
