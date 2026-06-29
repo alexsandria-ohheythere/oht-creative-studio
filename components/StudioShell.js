@@ -49,7 +49,13 @@ export default function StudioShell({ profile, email, content, brands = [], camp
   // shared/bookmarked link (e.g. /dashboard#camp) lands on the right module.
   useEffect(() => {
     setActive(idFromHash());
-    const onHash = () => setActive(idFromHash());
+    // Only react to hash changes that DON'T already match what a click set —
+    // this avoids a redundant second render on every sidebar tap (the click
+    // sets state instantly; the hash write would otherwise re-set the same id).
+    const onHash = () => {
+      const next = idFromHash();
+      setActive((cur) => (cur === next ? cur : next));
+    };
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
     // eslint-disable-next-line react-hooks/exhaustive-deps
