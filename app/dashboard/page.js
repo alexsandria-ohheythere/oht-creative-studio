@@ -49,6 +49,13 @@ export default async function DashboardPage() {
     .eq('archived', false)
     .order('created_at', { ascending: true });
 
+  // Load assets for the Asset Library. RLS scopes these (command sees all,
+  // freelancers see only their scoped brand). Real columns only.
+  const { data: assets } = await supabase
+    .from('assets')
+    .select('id, brand_id, content_id, storage_path, kind, created_at')
+    .order('created_at', { ascending: false });
+
   const safeProfile = profile || {
     full_name: user.email,
     role: 'freelance',
@@ -65,6 +72,7 @@ export default async function DashboardPage() {
       briefs={briefs || []}
       brands={brands || []}
       campaigns={campaigns || []}
+      assets={assets || []}
     />
   );
 }
