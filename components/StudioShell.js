@@ -1770,6 +1770,7 @@ function AssetLibrary({ assets = [], content = [], briefs = [], brands = [], bra
   const [uploading, setUploading] = useState(false);
   const [uploadErr, setUploadErr] = useState('');
   const [confirmId, setConfirmId] = useState(null);
+  const [fmtTab, setFmtTab] = useState({}); // { [channel]: activeFormat }
 
   const [saveState, saveAction] = useActionState(saveAsset, {});
   const [delState, deleteAction] = useActionState(deleteAsset, {});
@@ -1901,10 +1902,14 @@ function AssetLibrary({ assets = [], content = [], briefs = [], brands = [], bra
     (byChannel[e.channel] ||= {});
     (byChannel[e.channel][e.format] ||= []).push(e);
   }
-  // Channel order: known channels first (by CHANNEL_COLOR), then alpha, Unsorted last.
+  // Channel order: canonical CHANNELS order first, then any extras alpha, Unsorted last.
   const channelKeys = Object.keys(byChannel).sort((a, b) => {
     if (a === 'Unsorted') return 1;
     if (b === 'Unsorted') return -1;
+    const ia = CHANNELS.indexOf(a), ib = CHANNELS.indexOf(b);
+    if (ia !== -1 && ib !== -1) return ia - ib;
+    if (ia !== -1) return -1;
+    if (ib !== -1) return 1;
     return a.localeCompare(b);
   });
 
@@ -1981,24 +1986,49 @@ function AssetLibrary({ assets = [], content = [], briefs = [], brands = [], bra
         <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
           {channelKeys.map((ch) => {
             const cc = CHANNEL_COLOR[ch] || '#9494AA';
-            const formatKeys = Object.keys(byChannel[ch]).sort((a, b) => a.localeCompare(b));
-            const chTotal = formatKeys.reduce((s, f) => s + byChannel[ch][f].length, 0);
+            const present = byChannel[ch];
+            const chTotal = Object.values(present).reduce((s, arr) => s + arr.length, 0);
+            // Tab order: canonical taxonomy first, then any extra formats present (e.g. General).
+            const taxonomy = FORMATS_BY_CHANNEL[ch] || [];
+            const extras = Object.keys(present).filter((f) => !taxonomy.includes(f)).sort((a, b) => a.localeCompare(b));
+            const formatTabs = [...taxonomy, ...extras];
+            // Active tab: remembered, else first format that actually has assets, else first tab.
+            const firstWithItems = formatTabs.find((f) => (present[f] || []).length > 0);
+            const active = fmtTab[ch] || firstWithItems || formatTabs[0];
+            const activeItems = present[active] || [];
             return (
               <div key={ch}>
                 {/* Channel header */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, paddingBottom: 8, borderBottom: `2px solid ${cc}33` }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, paddingBottom: 8, borderBottom: `2px solid ${cc}33` }}>
                   <span style={{ width: 10, height: 10, borderRadius: '50%', background: cc }} />
                   <span style={{ fontSize: 15, fontWeight: 700, color: cc }}>{ch}</span>
                   <span style={{ fontSize: 12, color: 'var(--text3)' }}>· {chTotal}</span>
                 </div>
 
-                {formatKeys.map((fmt) => (
-                  <div key={fmt} style={{ marginBottom: 18 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text3)', marginBottom: 10 }}>
-                      {fmt} <span style={{ color: 'var(--text3)', fontWeight: 500 }}>({byChannel[ch][fmt].length})</span>
-                    </div>
+                {/* Format tabs */}
+                <div className="cvws" style={{ display: 'flex', flexWrap: 'wrap', width: 'fit-content', maxWidth: '100%', marginBottom: 14 }}>
+                  {formatTabs.map((fmt) => {
+                    const n = (present[fmt] || []).length;
+                    const on = fmt === active;
+                    return (
+                      <div key={fmt} className={`cvw ${on ? 'on' : ''}`}
+                        onClick={() => setFmtTab((m) => ({ ...m, [ch]: fmt }))}
+                        style={on ? { color: cc, background: cc + '22' } : { color: n ? 'var(--text2)' : 'var(--text3)' }}>
+                        {fmt} ({n})
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Active format grid */}
+                {activeItems.length === 0 ? (
+                  <div style={{ fontSize: 12, color: 'var(--text3)', padding: '8px 2px 4px', marginBottom: 18 }}>
+                    No assets in “{active}” yet.
+                  </div>
+                ) : (
+                  <div style={{ marginBottom: 18 }}>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 14 }}>
-                      {byChannel[ch][fmt].map((e) => {
+                      {activeItems.map((e) => {
                         const meta = e.kind === 'link' ? { label: 'Link', icon: '🔗', color: '#AED8FF' } : (KIND_META[e.kind] || KIND_META.doc);
                         const c = colorFor(e.brand_id);
                         const bName = (brandById(e.brand_id) || {}).name || 'Unassigned';
@@ -2041,7 +2071,7 @@ function AssetLibrary({ assets = [], content = [], briefs = [], brands = [], bra
                       })}
                     </div>
                   </div>
-                ))}
+                )}
               </div>
             );
           })}
