@@ -22,7 +22,7 @@ export default async function DashboardPage() {
   // (The old select referenced owner_name/reach/etc. which don't exist.)
   const { data: content } = await supabase
     .from('content_items')
-    .select('id, brand_id, brief_id, campaign_id, title, body, status, attachments, created_at')
+    .select('id, brand_id, brief_id, campaign_id, title, body, status, attachments, drive_folder_id, drive_folder_url, created_at')
     .order('created_at', { ascending: false });
 
   // Pipeline upstream: ideas and briefs.
@@ -63,6 +63,13 @@ export default async function DashboardPage() {
     title: 'Member',
   };
 
+  // Is the shared Google Drive connected? (RLS: only command can read the row,
+  // so freelancers will see false — fine; they upload via the shared folder link
+  // which lives on each card.)
+  const { data: gtok } = await supabase
+    .from('google_tokens').select('account').eq('account', 'ohheythere.group').maybeSingle();
+  const googleConnected = !!gtok;
+
   return (
     <StudioShell
       profile={safeProfile}
@@ -73,6 +80,7 @@ export default async function DashboardPage() {
       brands={brands || []}
       campaigns={campaigns || []}
       assets={assets || []}
+      googleConnected={googleConnected}
     />
   );
 }
