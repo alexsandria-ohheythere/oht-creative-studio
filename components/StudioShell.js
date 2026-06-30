@@ -610,6 +610,7 @@ function CampaignForm({ campaign, brands = [], onDone, onCancel }) {
   );
 
   useEffect(() => { if (state?.ok) onDone(); }, [state?.ok]);
+  const addPillar = () => setPillars((p) => [...p, { name: '', description: '' }]);
   const removePillar = (i) => setPillars((p) => p.filter((_, idx) => idx !== i));
   const updatePillar = (i, key, val) =>
     setPillars((p) => p.map((row, idx) => (idx === i ? { ...row, [key]: val } : row)));
