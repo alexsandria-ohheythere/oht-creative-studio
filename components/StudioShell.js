@@ -25,7 +25,7 @@ function initials(name = '') {
   return name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 }
 
-export default function StudioShell({ profile, email, content, brands = [], campaigns = [], ideas = [], briefs = [], assets = [] }) {
+export default function StudioShell({ profile, email, content, brands = [], campaigns = [], ideas = [], briefs = [], assets = [], googleConnected = false }) {
   const role = profile.role === 'command' ? 'command' : 'freelance';
   const visibleNav = NAV.filter((n) => n.roles.includes(role));
 
@@ -223,7 +223,7 @@ export default function StudioShell({ profile, email, content, brands = [], camp
             )}
 
             {parentId === 'content' && (
-              <ContentCenter content={content} ideas={ideas} briefs={briefs} brands={brands} campaigns={campaigns} assets={assets} isCommand={isCommand} brandColor={brandColor} subView={subView} />
+              <ContentCenter content={content} ideas={ideas} briefs={briefs} brands={brands} campaigns={campaigns} assets={assets} isCommand={isCommand} brandColor={brandColor} subView={subView} googleConnected={googleConnected} />
             )}
 
             {parentId === 'mc' && subView === 'assets' && (
@@ -1713,14 +1713,14 @@ function BrandForm({ brand, onDone, onCancel }) {
 //   briefs(brand_id, idea_id, channel, brief, status draft|approved|archived)
 //   content_items(brand_id, brief_id, campaign_id, title, body,
 //                 status in_production|review|approved)
-function ContentCenter({ content, ideas = [], briefs = [], brands = [], campaigns = [], assets = [], isCommand, brandColor, subView }) {
+function ContentCenter({ content, ideas = [], briefs = [], brands = [], campaigns = [], assets = [], isCommand, brandColor, subView, googleConnected = false }) {
   const tab = ['ideas', 'briefs', 'production', 'assets'].includes(subView) ? subView : 'ideas';
   const brandById = (id) => brands.find((b) => b.id === id) || null;
 
   if (tab === 'ideas') return <IdeasView ideas={ideas} brands={brands} campaigns={campaigns} brandById={brandById} isCommand={isCommand} />;
   if (tab === 'briefs') return <BriefsView briefs={briefs} ideas={ideas} brands={brands} brandById={brandById} isCommand={isCommand} />;
   if (tab === 'assets') return <AssetLibrary assets={assets} content={content} briefs={briefs} brands={brands} brandColor={brandColor} isCommand={isCommand} />;
-  return <ProductionView content={content} briefs={briefs} brands={brands} campaigns={campaigns} brandById={brandById} isCommand={isCommand} />;
+  return <ProductionView content={content} briefs={briefs} brands={brands} campaigns={campaigns} brandById={brandById} isCommand={isCommand} googleConnected={googleConnected} />;
 }
 
 // Shared form atoms.
@@ -2503,7 +2503,7 @@ function BriefsView({ briefs, ideas, brands, brandById, isCommand }) {
 }
 
 // ------------------------------------------------------------ PRODUCTION
-function ProductionView({ content, briefs, brands, campaigns, brandById, isCommand }) {
+function ProductionView({ content, briefs, brands, campaigns, brandById, isCommand, googleConnected = false }) {
   const [editing, setEditing] = useState(null);
   const [viewing, setViewing] = useState(null); // card opened for detail (read-only)
   const [dragId, setDragId] = useState(null);    // card being dragged
@@ -2512,6 +2512,33 @@ function ProductionView({ content, briefs, brands, campaigns, brandById, isComma
   const [, statusAction, statusBusy] = useActionState(setContentStatus, {});
   const [delState, deleteAction, deletingItem] = useActionState(deleteContent, {});
   const [attState, attAction, attBusy] = useActionState(setContentAttachments, {});
+
+  // Drive folder provisioning (for the open detail card).
+  const [folderBusy, setFolderBusy] = useState(false);
+  const [folderErr, setFolderErr] = useState('');
+
+  // Ask the server to create/find this card's Drive folder, then reflect the
+  // returned URL in the open detail view without a full reload.
+  async function provisionFolder(item) {
+    setFolderErr('');
+    setFolderBusy(true);
+    try {
+      const res = await fetch('/api/google/folder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content_id: item.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not create the folder.');
+      setViewing((v) => (v && v.id === item.id
+        ? { ...v, drive_folder_url: data.url, drive_folder_id: data.id }
+        : v));
+    } catch (e) {
+      setFolderErr(e.message || 'Could not create the folder.');
+    } finally {
+      setFolderBusy(false);
+    }
+  }
 
   // Draft state for the attachments editor (in the detail view).
   const [linkUrl, setLinkUrl] = useState('');
@@ -2607,6 +2634,37 @@ function ProductionView({ content, briefs, brands, campaigns, brandById, isComma
           {/* Attachments — Google Drive links for submission. Command + freelance. */}
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
             <div style={cLbl}>Attachments · Google Drive links</div>
+
+            {/* Artist upload target — auto-provisioned Drive folder for this card. */}
+            {c.drive_folder_url ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#64BC4618', border: '1px solid #64BC4655', borderRadius: 10, padding: '11px 13px', marginBottom: 14 }}>
+                <span style={{ fontSize: 18 }}>📁</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64BC46' }}>Artist uploads here</div>
+                  <div style={{ fontSize: 12, color: 'var(--text2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.drive_folder_url}>{c.drive_folder_url}</div>
+                </div>
+                <a href={c.drive_folder_url} target="_blank" rel="noreferrer" className="btn bl" style={{ whiteSpace: 'nowrap', textDecoration: 'none' }}>Open folder ↗</a>
+              </div>
+            ) : googleConnected ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--bg3)', border: '1px dashed var(--border)', borderRadius: 10, padding: '11px 13px', marginBottom: 14 }}>
+                <span style={{ fontSize: 18 }}>📁</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text3)' }}>Artist upload folder</div>
+                  <div style={{ fontSize: 12, color: 'var(--text3)' }}>Create a dedicated Drive folder so the artist knows exactly where to upload.</div>
+                </div>
+                {isCommand && (
+                  <button type="button" className={`btn bl ${folderBusy ? 'loading' : ''}`} disabled={folderBusy} onClick={() => provisionFolder(c)} style={{ whiteSpace: 'nowrap' }}>
+                    {folderBusy ? 'Creating…' : '✦ Create folder'}
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div style={{ fontSize: 12, color: 'var(--text3)', background: 'var(--bg3)', border: '1px dashed var(--border)', borderRadius: 10, padding: '11px 13px', marginBottom: 14 }}>
+                Connect Google Drive {isCommand ? <>(<a href="/api/google/connect" style={{ color: '#64BC46' }}>connect now</a>)</> : ''} to auto-create an upload folder for each card.
+              </div>
+            )}
+            {folderErr && <div style={{ fontSize: 12, color: '#ff6464', marginBottom: 12 }}>{folderErr}</div>}
+
             {(c.attachments || []).length === 0 && (
               <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 10 }}>No files attached yet. Paste a Google Drive share link below.</div>
             )}
