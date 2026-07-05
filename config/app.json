@@ -8,8 +8,8 @@
 
     { "id": "content", "label": "Content", "icon": "◆", "section": "Social Media", "roles": ["command", "freelance"],
       "children": [
+        { "id": "content.bucket", "label": "Content Bucket" },
         { "id": "content.ideas", "label": "Ideas" },
-        { "id": "content.briefs", "label": "Briefs" },
         { "id": "content.production", "label": "Production" },
         { "id": "content.assets", "label": "Assets" }
       ]
