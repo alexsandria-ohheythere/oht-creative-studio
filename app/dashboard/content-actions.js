@@ -127,6 +127,49 @@ export async function setIdeaReady(prevState, formData) {
   return res;
 }
 
+// Duplicate a Content Bucket row: copies every editable field (including
+// carousel slides) onto a brand-new row as a fast starting point for a
+// variant. Always lands un-ready (draft) even if the original was already
+// flipped to Ready, so a duplicate never jumps straight into the Ideas
+// module unannounced — Alex has to flip it on purpose.
+export async function duplicateIdea(prevState, formData) {
+  const id = nz(formData.get('id'));
+  if (!id) return { error: 'Missing idea id.' };
+
+  const supabase = await createClient();
+  const { data: original, error: fetchError } = await supabase
+    .from('ideas')
+    .select('*')
+    .eq('id', id)
+    .single();
+  if (fetchError) return { error: fetchError.message };
+  if (!original) return { error: 'Could not find that row to duplicate.' };
+
+  const payload = {
+    brand_id: original.brand_id,
+    campaign_id: original.campaign_id,
+    title: `${original.title} (Copy)`,
+    notes: original.notes,
+    status: 'new',
+    pillar: original.pillar,
+    channel: original.channel,
+    format: original.format,
+    hook: original.hook,
+    caption: original.caption,
+    hashtags: original.hashtags,
+    mandatories: original.mandatories,
+    publish_date: original.publish_date,
+    production_due: original.production_due,
+    edit_due: original.edit_due,
+    ready: false,
+    carousel_slides: Array.isArray(original.carousel_slides) ? original.carousel_slides : [],
+  };
+
+  const res = await writeBack(supabase.from('ideas').insert(payload));
+  if (res.ok) revalidatePath('/dashboard');
+  return res;
+}
+
 export async function deleteIdea(prevState, formData) {
   const id = nz(formData.get('id'));
   if (!id) return { error: 'Missing idea id.' };
