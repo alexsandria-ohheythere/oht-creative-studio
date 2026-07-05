@@ -3,21 +3,26 @@
 import { revalidatePath } from 'next/cache';
 import { createClient } from '../../lib/supabase-server';
 
-// Content pipeline: ideas -> briefs -> content_items -> (assets, later).
+// Content pipeline: Content Bucket / Ideas -> Production -> (assets, later).
+// Briefs has been retired — ideas carry full brief-level detail themselves
+// (channel, format, hook, caption, hashtags, mandatories, dates), so an idea
+// promotes straight into a content_item.
 // Real schema (live DB), do not assume columns beyond these:
-//   ideas:         id, brand_id, campaign_id, title, notes, status
+//   ideas:         id, brand_id, campaign_id, title, notes, status, ready,
+//                  pillar, channel, format, hook, caption, hashtags,
+//                  mandatories, publish_date, production_due, edit_due
 //                  status in ('new','approved','archived')
-//   briefs:        id, brand_id, idea_id, channel, brief, status
-//                  status in ('draft','approved','archived')
-//   content_items: id, brand_id, brief_id, campaign_id, title, body, status
-//                  status in ('in_production','review','approved')
+//                  ready: false = row lives in the Content Bucket table only,
+//                         true  = also shown as a card in the Ideas module
+//   content_items: id, brand_id, idea_id, brief_id(legacy, unused), campaign_id,
+//                  title, body, status
+//                  status in ('command_review','in_production','review','approved')
 //
 // Every write returns error.message on failure AND selects the row back so a
 // silent RLS zero-row write (no policy => success with 0 rows) is detected.
 
 const IDEA_STATUS = ['new', 'approved', 'archived'];
-const BRIEF_STATUS = ['draft', 'approved', 'archived'];
-const CONTENT_STATUS = ['in_production', 'review', 'approved'];
+const CONTENT_STATUS = ['command_review', 'in_production', 'review', 'approved'];
 
 function nz(v) {
   const s = (v || '').toString().trim();
@@ -66,6 +71,8 @@ export async function saveIdea(prevState, formData) {
   const edit_due = dueBefore(publish_date, 3);
   let status = nz(formData.get('status')) || 'new';
   if (!IDEA_STATUS.includes(status)) status = 'new';
+  // ready: false = still a Content Bucket row, true = also a card in Ideas.
+  const ready = formData.get('ready') === 'true';
 
   if (!title) return { error: 'Idea needs a title.' };
   if (!brand_id) return { error: 'Pick a brand.' };
@@ -74,13 +81,27 @@ export async function saveIdea(prevState, formData) {
   const payload = {
     title, brand_id, campaign_id, pillar, channel, format,
     notes, hook, caption, hashtags, mandatories,
-    publish_date, production_due, edit_due, status,
+    publish_date, production_due, edit_due, status, ready,
   };
   const q = id
     ? supabase.from('ideas').update(payload).eq('id', id)
     : supabase.from('ideas').insert(payload);
 
   const res = await writeBack(q);
+  if (res.ok) revalidatePath('/dashboard');
+  return res;
+}
+
+// One-click toggle used from the Content Bucket table — flips an idea's
+// `ready` flag without opening the full form. true = pop it into Ideas.
+export async function setIdeaReady(prevState, formData) {
+  const id = nz(formData.get('id'));
+  const ready = formData.get('ready') === 'true';
+  if (!id) return { error: 'Missing idea id.' };
+  const supabase = await createClient();
+  const res = await writeBack(
+    supabase.from('ideas').update({ ready }).eq('id', id)
+  );
   if (res.ok) revalidatePath('/dashboard');
   return res;
 }
@@ -95,132 +116,28 @@ export async function deleteIdea(prevState, formData) {
   return { ok: true, deleted: true };
 }
 
-// Promote an idea into a new draft brief, carrying all its detail across.
-export async function promoteIdeaToBrief(prevState, formData) {
+// Promote an idea straight into production: create a content_item carrying
+// the idea's title, linked back via idea_id. Used both by "Promote to
+// Production" on an Idea card, and by dropping a Command Review idea-card
+// onto another column in the Production board (status = drop target).
+export async function promoteIdeaToProduction(prevState, formData) {
   const idea_id = nz(formData.get('idea_id'));
   const brand_id = nz(formData.get('brand_id'));
+  const campaign_id = nz(formData.get('campaign_id'));
+  const title = nz(formData.get('title')) || 'Untitled';
+  let status = nz(formData.get('status')) || 'command_review';
+  if (!CONTENT_STATUS.includes(status)) status = 'command_review';
   if (!idea_id || !brand_id) return { error: 'Missing idea or brand.' };
 
   const supabase = await createClient();
 
-  // Pull the idea so we can copy its detail into the brief.
-  const { data: idea } = await supabase
-    .from('ideas')
-    .select('channel, format, notes, hook, caption, hashtags, mandatories, publish_date, production_due, edit_due')
-    .eq('id', idea_id)
-    .single();
+  // Ready flag just means "visible as an Ideas card" — promoting to
+  // production should always leave it ready so it stays visible there too.
+  await supabase.from('ideas').update({ ready: true }).eq('id', idea_id);
 
-  // Mark the idea approved, then create the brief from it.
-  await supabase.from('ideas').update({ status: 'approved' }).eq('id', idea_id);
-
-  const res = await writeBack(
-    supabase.from('briefs').insert({
-      idea_id,
-      brand_id,
-      channel: idea?.channel || null,
-      format: idea?.format || null,
-      brief: idea?.notes || '',
-      hook: idea?.hook || null,
-      caption: idea?.caption || null,
-      hashtags: idea?.hashtags || null,
-      mandatories: idea?.mandatories || null,
-      publish_date: idea?.publish_date || null,
-      production_due: idea?.production_due || null,
-      edit_due: idea?.edit_due || null,
-      references: [],
-      attachments: [],
-      status: 'draft',
-    })
-  );
-  if (res.ok) revalidatePath('/dashboard');
-  return res;
-}
-
-// --------------------------------------------------------------- BRIEFS
-export async function saveBrief(prevState, formData) {
-  const id = nz(formData.get('id'));
-  const brand_id = nz(formData.get('brand_id'));
-  const idea_id = nz(formData.get('idea_id'));
-  const channel = nz(formData.get('channel'));
-  const format = nz(formData.get('format'));
-  const brief = (formData.get('brief') || '').toString().trim();
-  const hook = nz(formData.get('hook'));
-  const caption = nz(formData.get('caption'));
-  const hashtags = nz(formData.get('hashtags'));
-  const mandatories = nz(formData.get('mandatories'));
-  const publish_date = isoDate(formData.get('publish_date'));
-  const production_due = dueBefore(publish_date, 5);
-  const edit_due = dueBefore(publish_date, 3);
-  let status = nz(formData.get('status')) || 'draft';
-  if (!BRIEF_STATUS.includes(status)) status = 'draft';
-
-  // references: newline-separated URLs -> array of clean strings.
-  let references = [];
-  const refRaw = (formData.get('references') || '').toString();
-  references = refRaw
-    .split(/[\n,]+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-  // attachments: JSON array of { url, name } the client built after upload.
-  let attachments = [];
-  try {
-    const raw = formData.get('attachments');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        attachments = parsed
-          .map((a) => ({
-            url: (a?.url || '').toString().trim(),
-            name: (a?.name || '').toString().trim(),
-          }))
-          .filter((a) => a.url);
-      }
-    }
-  } catch {
-    attachments = [];
-  }
-
-  if (!brand_id) return { error: 'Pick a brand.' };
-
-  const supabase = await createClient();
-  const payload = {
-    brand_id, idea_id, channel, format, brief,
-    hook, caption, hashtags, mandatories,
-    publish_date, production_due, edit_due,
-    references, attachments, status,
-  };
-  const q = id
-    ? supabase.from('briefs').update(payload).eq('id', id)
-    : supabase.from('briefs').insert(payload);
-
-  const res = await writeBack(q);
-  if (res.ok) revalidatePath('/dashboard');
-  return res;
-}
-
-export async function deleteBrief(prevState, formData) {
-  const id = nz(formData.get('id'));
-  if (!id) return { error: 'Missing brief id.' };
-  const supabase = await createClient();
-  const { error } = await supabase.from('briefs').delete().eq('id', id);
-  if (error) return { error: error.message };
-  revalidatePath('/dashboard');
-  return { ok: true, deleted: true };
-}
-
-// Send an approved/any brief into production: create content_items with brief_id.
-export async function startProduction(prevState, formData) {
-  const brief_id = nz(formData.get('brief_id'));
-  const brand_id = nz(formData.get('brand_id'));
-  const title = nz(formData.get('title')) || 'Untitled';
-  if (!brief_id || !brand_id) return { error: 'Missing brief or brand.' };
-
-  const supabase = await createClient();
-  await supabase.from('briefs').update({ status: 'approved' }).eq('id', brief_id);
   const res = await writeBack(
     supabase.from('content_items').insert({
-      brief_id, brand_id, title, body: '', status: 'in_production',
+      idea_id, brand_id, campaign_id, title, body: '', status,
     })
   );
   if (res.ok) revalidatePath('/dashboard');
@@ -231,18 +148,18 @@ export async function startProduction(prevState, formData) {
 export async function saveContent(prevState, formData) {
   const id = nz(formData.get('id'));
   const brand_id = nz(formData.get('brand_id'));
-  const brief_id = nz(formData.get('brief_id'));
+  const idea_id = nz(formData.get('idea_id'));
   const campaign_id = nz(formData.get('campaign_id'));
   const title = nz(formData.get('title'));
   const body = (formData.get('body') || '').toString().trim();
-  let status = nz(formData.get('status')) || 'in_production';
-  if (!CONTENT_STATUS.includes(status)) status = 'in_production';
+  let status = nz(formData.get('status')) || 'command_review';
+  if (!CONTENT_STATUS.includes(status)) status = 'command_review';
 
   if (!title) return { error: 'Content needs a title.' };
   if (!brand_id) return { error: 'Pick a brand.' };
 
   const supabase = await createClient();
-  const payload = { brand_id, brief_id, campaign_id, title, body, status };
+  const payload = { brand_id, idea_id, campaign_id, title, body, status };
   const q = id
     ? supabase.from('content_items').update(payload).eq('id', id)
     : supabase.from('content_items').insert(payload);
