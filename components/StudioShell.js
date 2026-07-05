@@ -2101,18 +2101,21 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
   const [format, setFormat] = useState('');
   const [publishDate, setPublishDate] = useState('');
   const [ready, setReady] = useState(false);
+  const [slides, setSlides] = useState(['', '', '', '', '']);
 
   useEffect(() => { if (state?.ok) { setShowForm(false); setEditing(null); } }, [state?.ok]);
 
   const selectedCamp = campaigns.find((c) => c.id === campId);
   const pillarOptions = Array.isArray(selectedCamp?.pillars) ? selectedCamp.pillars : [];
   const formatOptions = FORMATS_BY_CHANNEL[channel] || [];
+  const isCarousel = /carousel/i.test(format);
 
   function openNewRow(forCampaignId) {
     setEditing(null);
     setBrandId(brands[0]?.id || '');
     setCampId(forCampaignId || '');
     setPillar(''); setChannel(''); setFormat(''); setPublishDate(''); setReady(false);
+    setSlides(['', '', '', '', '']);
     setShowForm(true);
   }
   function openEditRow(i) {
@@ -2124,6 +2127,8 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
     setFormat(i.format || '');
     setPublishDate(i.publish_date || '');
     setReady(!!i.ready);
+    const existing = Array.isArray(i.carousel_slides) ? i.carousel_slides : [];
+    setSlides(Array.from({ length: 5 }, (_, idx) => existing[idx] || ''));
     setShowForm(true);
   }
   function toggleReady(i) {
@@ -2167,6 +2172,7 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
           <input type="hidden" name="publish_date" value={publishDate} />
           <input type="hidden" name="status" value="new" />
           <input type="hidden" name="ready" value={ready ? 'true' : 'false'} />
+          <input type="hidden" name="carousel_slides" value={JSON.stringify(slides)} />
 
           <CField label="Title"><input style={cInp} name="title" defaultValue={editing?.title || ''} placeholder="e.g. Behind-the-bar matcha ritual reel" /></CField>
 
@@ -2211,6 +2217,22 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
               </select>
             </CField>
           </div>
+
+          {isCarousel && (
+            <CField label="Carousel Slides">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {slides.map((s, idx) => (
+                  <textarea
+                    key={idx}
+                    style={cTa(46)}
+                    value={s}
+                    onChange={(e) => setSlides((prev) => prev.map((p, pi) => (pi === idx ? e.target.value : p)))}
+                    placeholder={`Slide ${idx + 1} — copy / on-slide text`}
+                  />
+                ))}
+              </div>
+            </CField>
+          )}
 
           <CField label="Publish Date">
             <input style={cInp} type="date" value={publishDate} onChange={(e) => setPublishDate(e.target.value)} />
@@ -2271,7 +2293,14 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
                             <td style={{ padding: '8px 10px' }}><span style={{ fontSize: 10, fontWeight: 600, color: bc, background: bc + '1c', padding: '2px 7px', borderRadius: 5 }}>{b?.name || '—'}</span></td>
                             <td style={{ padding: '8px 10px', color: 'var(--text2)', whiteSpace: 'nowrap' }}>{i.pillar || '—'}</td>
                             <td style={{ padding: '8px 10px' }}>{i.channel ? <span style={{ fontSize: 10, fontWeight: 600, color: cc, background: cc + '1c', padding: '2px 7px', borderRadius: 5 }}>{i.channel}</span> : '—'}</td>
-                            <td style={{ padding: '8px 10px', color: 'var(--text3)', whiteSpace: 'nowrap' }}>{i.format || '—'}</td>
+                            <td style={{ padding: '8px 10px', color: 'var(--text3)', whiteSpace: 'nowrap' }}>
+                              {i.format || '—'}
+                              {/carousel/i.test(i.format || '') && (
+                                <span style={{ marginLeft: 6, fontSize: 10, color: Array.isArray(i.carousel_slides) && i.carousel_slides.filter(Boolean).length === 5 ? '#64BC46' : 'var(--text3)' }}>
+                                  ({Array.isArray(i.carousel_slides) ? i.carousel_slides.filter(Boolean).length : 0}/5 slides)
+                                </span>
+                              )}
+                            </td>
                             <td style={{ padding: '8px 10px', color: 'var(--text3)', whiteSpace: 'nowrap' }}>{i.publish_date || '—'}</td>
                             <td style={{ padding: '8px 10px' }}>
                               {isCommand ? (
@@ -2356,6 +2385,13 @@ function IdeasView({ ideas, content = [], brands, campaigns, brandById, isComman
                 {i.hook && <div style={{ fontSize: 12, color: 'var(--text)', lineHeight: 1.5 }}><b style={{ color: 'var(--text3)', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em' }}>Hook</b><br />{i.hook}</div>}
                 {i.caption && <div style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{i.caption}</div>}
                 {i.hashtags && <div style={{ fontSize: 11, color: cc, lineHeight: 1.4 }}>{i.hashtags}</div>}
+                {/carousel/i.test(i.format || '') && Array.isArray(i.carousel_slides) && i.carousel_slides.some(Boolean) && (
+                  <div style={{ fontSize: 11, color: 'var(--text3)', lineHeight: 1.5 }}>
+                    <b style={{ color: 'var(--text3)', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em' }}>Slides</b>
+                    <br />
+                    {i.carousel_slides.filter(Boolean).length}/5 filled
+                  </div>
+                )}
                 <DateRow publish={i.publish_date} production={i.production_due} edit={i.edit_due} />
                 {isCommand && (
                   <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
