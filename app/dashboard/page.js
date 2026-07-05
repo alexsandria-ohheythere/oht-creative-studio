@@ -29,7 +29,7 @@ export default async function DashboardPage() {
   // table, split by the `ready` flag). Briefs has been retired.
   const { data: ideas } = await supabase
     .from('ideas')
-    .select('id, brand_id, campaign_id, pillar, channel, format, title, notes, hook, caption, hashtags, mandatories, publish_date, production_due, edit_due, status, ready, created_at')
+    .select('id, brand_id, campaign_id, pillar, channel, format, title, notes, hook, caption, hashtags, mandatories, publish_date, production_due, edit_due, status, ready, carousel_slides, created_at')
     .order('created_at', { ascending: false });
 
   // Load campaigns. RLS scopes these (command sees all, freelancers see one).
