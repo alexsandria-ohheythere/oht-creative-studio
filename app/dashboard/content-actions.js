@@ -10,7 +10,10 @@ import { createClient } from '../../lib/supabase-server';
 // Real schema (live DB), do not assume columns beyond these:
 //   ideas:         id, brand_id, campaign_id, title, notes, status, ready,
 //                  pillar, channel, format, hook, caption, hashtags,
-//                  mandatories, publish_date, production_due, edit_due
+//                  mandatories, publish_date, production_due, edit_due,
+//                  carousel_slides (jsonb array, always normalized to 5
+//                  string entries; only shown/edited in the UI when format
+//                  is a Carousel variant)
 //                  status in ('new','approved','archived')
 //                  ready: false = row lives in the Content Bucket table only,
 //                         true  = also shown as a card in the Ideas module
@@ -74,6 +77,23 @@ export async function saveIdea(prevState, formData) {
   // ready: false = still a Content Bucket row, true = also a card in Ideas.
   const ready = formData.get('ready') === 'true';
 
+  // Carousel Slides: 5 fixed text slots, only meaningful when format is a
+  // Carousel variant. Arrives as a JSON array of up to 5 strings; always
+  // normalized to exactly 5 entries (padded/truncated) so the UI can index
+  // safely regardless of format.
+  let carousel_slides = [];
+  try {
+    const raw = formData.get('carousel_slides');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        carousel_slides = Array.from({ length: 5 }, (_, i) => nz(parsed[i]) || '');
+      }
+    }
+  } catch {
+    carousel_slides = [];
+  }
+
   if (!title) return { error: 'Idea needs a title.' };
   if (!brand_id) return { error: 'Pick a brand.' };
 
@@ -82,6 +102,7 @@ export async function saveIdea(prevState, formData) {
     title, brand_id, campaign_id, pillar, channel, format,
     notes, hook, caption, hashtags, mandatories,
     publish_date, production_due, edit_due, status, ready,
+    carousel_slides,
   };
   const q = id
     ? supabase.from('ideas').update(payload).eq('id', id)
