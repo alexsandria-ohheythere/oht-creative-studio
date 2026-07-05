@@ -6,7 +6,7 @@ import { saveBrand, archiveBrand, deleteBrand } from '../app/dashboard/brand-act
 import { saveCampaign, deleteCampaign } from '../app/dashboard/campaign-actions';
 import { saveAsset, deleteAsset } from '../app/dashboard/asset-actions';
 import {
-  saveIdea, deleteIdea, setIdeaReady, promoteIdeaToProduction,
+  saveIdea, deleteIdea, duplicateIdea, setIdeaReady, promoteIdeaToProduction,
   saveContent, setContentStatus, deleteContent, setContentAttachments,
 } from '../app/dashboard/content-actions';
 import { createClient as createBrowserClient } from '../lib/supabase-browser';
@@ -2094,6 +2094,7 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
   const [state, formAction, pending] = useActionState(saveIdea, {});
   const [, readyAction, togglingReady] = useActionState(setIdeaReady, {});
   const [delState, deleteAction, deletingIdea] = useActionState(deleteIdea, {});
+  const [dupState, duplicateAction, duplicating] = useActionState(duplicateIdea, {});
   const [brandId, setBrandId] = useState('');
   const [campId, setCampId] = useState('');
   const [pillar, setPillar] = useState('');
@@ -2157,8 +2158,8 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
         {isCommand && !showForm && <button type="button" className="btn bl" onClick={() => openNewRow(campaigns[0]?.id || '')}>＋ New row</button>}
       </div>
 
-      {(state?.error || delState?.error) && (
-        <div className="ap-note" style={{ borderColor: 'rgba(255,100,100,.35)', color: '#ff6464' }}>{state?.error || delState?.error}</div>
+      {(state?.error || delState?.error || dupState?.error) && (
+        <div className="ap-note" style={{ borderColor: 'rgba(255,100,100,.35)', color: '#ff6464' }}>{state?.error || delState?.error || dupState?.error}</div>
       )}
 
       {showForm && (
@@ -2316,6 +2317,8 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
                               {isCommand && (
                                 <div style={{ display: 'flex', gap: 5 }}>
                                   <button type="button" className="btn bg" style={{ fontSize: 11, padding: '3px 7px' }} onClick={() => openEditRow(i)}>✎</button>
+                                  <form action={duplicateAction}><input type="hidden" name="id" value={i.id} />
+                                    <button className="btn bg" type="submit" disabled={duplicating} title="Duplicate row" style={{ fontSize: 11, padding: '3px 7px' }}>⧉</button></form>
                                   <form action={deleteAction}><input type="hidden" name="id" value={i.id} />
                                     <button className="btn bg" type="submit" disabled={deletingIdea} style={{ fontSize: 11, padding: '3px 7px', color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }}>🗑</button></form>
                                 </div>
