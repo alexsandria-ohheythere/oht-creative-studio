@@ -22,18 +22,14 @@ export default async function DashboardPage() {
   // (The old select referenced owner_name/reach/etc. which don't exist.)
   const { data: content } = await supabase
     .from('content_items')
-    .select('id, brand_id, brief_id, campaign_id, title, body, status, attachments, drive_folder_id, drive_folder_url, created_at')
+    .select('id, brand_id, idea_id, brief_id, campaign_id, title, body, status, attachments, drive_folder_id, drive_folder_url, created_at')
     .order('created_at', { ascending: false });
 
-  // Pipeline upstream: ideas and briefs.
+  // Pipeline upstream: ideas (Content Bucket rows + Ideas cards — same
+  // table, split by the `ready` flag). Briefs has been retired.
   const { data: ideas } = await supabase
     .from('ideas')
-    .select('id, brand_id, campaign_id, pillar, channel, format, title, notes, hook, caption, hashtags, mandatories, publish_date, production_due, edit_due, status, created_at')
-    .order('created_at', { ascending: false });
-
-  const { data: briefs } = await supabase
-    .from('briefs')
-    .select('id, brand_id, idea_id, channel, format, brief, hook, caption, hashtags, mandatories, references, attachments, publish_date, production_due, edit_due, status, created_at')
+    .select('id, brand_id, campaign_id, pillar, channel, format, title, notes, hook, caption, hashtags, mandatories, publish_date, production_due, edit_due, status, ready, created_at')
     .order('created_at', { ascending: false });
 
   // Load campaigns. RLS scopes these (command sees all, freelancers see one).
@@ -76,7 +72,6 @@ export default async function DashboardPage() {
       email={user.email}
       content={content || []}
       ideas={ideas || []}
-      briefs={briefs || []}
       brands={brands || []}
       campaigns={campaigns || []}
       assets={assets || []}
