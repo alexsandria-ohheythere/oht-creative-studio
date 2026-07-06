@@ -4,7 +4,7 @@
 
     { "id": "brain", "label": "Brand Brain", "icon": "◆", "section": "Foundation", "roles": ["command", "freelance"] },
 
-    { "id": "camp", "label": "Campaigns", "icon": "◆", "section": "Social Media", "roles": ["command"] },
+    { "id": "camp", "label": "Campaigns", "icon": "◆", "section": "Social Media", "roles": ["command", "freelance"] },
 
     { "id": "content", "label": "Content", "icon": "◆", "section": "Social Media", "roles": ["command", "freelance"],
       "children": [
@@ -15,14 +15,14 @@
       ]
     },
 
-    { "id": "publishing", "label": "Publishing", "icon": "◆", "section": "Social Media", "roles": ["command"],
+    { "id": "publishing", "label": "Publishing", "icon": "◆", "section": "Social Media", "roles": ["command", "freelance"],
       "children": [
         { "id": "publishing.calendar", "label": "Calendar" },
         { "id": "publishing.channels", "label": "Channels" }
       ]
     },
 
-    { "id": "insights", "label": "Insights", "icon": "◆", "section": "Social Media", "roles": ["command"],
+    { "id": "insights", "label": "Insights", "icon": "◆", "section": "Social Media", "roles": ["command", "freelance"],
       "children": [
         { "id": "insights.performance", "label": "Performance" },
         { "id": "insights.audience", "label": "Audience" },
@@ -30,15 +30,15 @@
       ]
     },
 
-    { "id": "strategist", "label": "AI Strategist", "icon": "◆", "section": "Social Media", "roles": ["command"], "flagship": true },
+    { "id": "strategist", "label": "AI Strategist", "icon": "◆", "section": "Social Media", "roles": ["command", "freelance"], "flagship": true },
 
-    { "id": "mc.theme", "label": "Theme", "icon": "◆", "section": "Marketing Collaterals", "roles": ["command"] },
+    { "id": "mc.theme", "label": "Theme", "icon": "◆", "section": "Marketing Collaterals", "roles": ["command", "freelance"] },
 
     { "id": "mc.content", "label": "Line Up", "icon": "◆", "section": "Marketing Collaterals", "roles": ["command", "freelance"] },
 
     { "id": "mc.production", "label": "Assembly", "icon": "◆", "section": "Marketing Collaterals", "roles": ["command", "freelance"] },
 
-    { "id": "mc.assets", "label": "Assets", "icon": "◆", "section": "Marketing Collaterals", "roles": ["command"] }
+    { "id": "mc.assets", "label": "Assets", "icon": "◆", "section": "Marketing Collaterals", "roles": ["command", "freelance"] }
   ],
   "groupColors": {
     "Overview": "#6f6f7d",
