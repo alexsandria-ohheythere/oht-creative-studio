@@ -68,6 +68,11 @@ export default function StudioShell({ profile, email, content, brands = [], camp
 
   const sections = [...new Set(visibleNav.map((n) => n.section))];
   const isCommand = role === 'command';
+  // Command normally implies full delete rights, but a specific command
+  // user can have that narrowed (profiles.can_delete = false) without
+  // losing view/create/edit access. Defaults to true so this has no
+  // effect unless the column is explicitly set otherwise.
+  const canDelete = profile.can_delete !== false;
 
   const brandColor = (name) => {
     const b = brands.find((x) => x.name === name);
@@ -219,15 +224,15 @@ export default function StudioShell({ profile, email, content, brands = [], camp
             )}
 
             {parentId === 'brain' && (
-              <BrandCenter brands={brands} isCommand={isCommand} content={content} />
+              <BrandCenter brands={brands} isCommand={isCommand} canDelete={canDelete} content={content} />
             )}
 
             {parentId === 'camp' && (
-              <Campaigns isCommand={isCommand} campaigns={campaigns} content={content} brands={brands} brandColor={brandColor} />
+              <Campaigns isCommand={isCommand} canDelete={canDelete} campaigns={campaigns} content={content} brands={brands} brandColor={brandColor} />
             )}
 
             {parentId === 'content' && (
-              <ContentCenter content={content} ideas={ideas} brands={brands} campaigns={campaigns} assets={assets} isCommand={isCommand} brandColor={brandColor} subView={subView} googleConnected={googleConnected} />
+              <ContentCenter content={content} ideas={ideas} brands={brands} campaigns={campaigns} assets={assets} isCommand={isCommand} canDelete={canDelete} brandColor={brandColor} subView={subView} googleConnected={googleConnected} />
             )}
 
             {parentId === 'mc' && subView === 'theme' && (
@@ -389,7 +394,7 @@ function fmtMoney(n) {
   return '₱' + v.toLocaleString('en-US', { maximumFractionDigits: 0 });
 }
 
-function Campaigns({ isCommand, campaigns = [], content = [], brands = [], brandColor }) {
+function Campaigns({ isCommand, canDelete = true, campaigns = [], content = [], brands = [], brandColor }) {
   const [view, setView] = useState('list'); // 'list' | 'detail' | 'form'
   const [openId, setOpenId] = useState(null);
   const [editing, setEditing] = useState(null);
@@ -463,10 +468,10 @@ function Campaigns({ isCommand, campaigns = [], content = [], brands = [], brand
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             {isCommand && <button type="button" className="btn bg" onClick={() => openEdit(open)}>✎ Edit</button>}
-            {isCommand && !confirmDel && (
+            {isCommand && canDelete && !confirmDel && (
               <button type="button" className="btn bg" style={{ color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }} onClick={() => setConfirmDel(true)}>🗑 Delete</button>
             )}
-            {isCommand && confirmDel && (
+            {isCommand && canDelete && confirmDel && (
               <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
                 <span style={{ fontSize: 12, color: '#ff6464' }}>Delete campaign?</span>
                 <form action={deleteAction} style={{ display: 'inline' }}>
@@ -887,7 +892,7 @@ function Approvals({ content, role, brandScope, byStatus, brandColor }) {
 // =====================================================================
 // BRAND CENTER — manage 5+ brands: voice, style, messaging, templates
 // =====================================================================
-function BrandCenter({ brands, isCommand, content }) {
+function BrandCenter({ brands, isCommand, canDelete = true, content }) {
   // view: 'list' | 'detail' | 'form'
   const [view, setView] = useState('list');
   const [openId, setOpenId] = useState(null);
@@ -940,10 +945,10 @@ function BrandCenter({ brands, isCommand, content }) {
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             {isCommand && <button type="button" className="btn bg" onClick={() => openEdit(open)}>✎ Edit</button>}
-            {isCommand && !confirmDel && (
+            {isCommand && canDelete && !confirmDel && (
               <button type="button" className="btn bg" style={{ color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }} onClick={() => setConfirmDel(true)}>🗑 Delete</button>
             )}
-            {isCommand && confirmDel && (
+            {isCommand && canDelete && confirmDel && (
               <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
                 <span style={{ fontSize: 12, color: '#ff6464' }}>Delete permanently?</span>
                 <form action={deleteAction} style={{ display: 'inline' }}>
@@ -1731,14 +1736,14 @@ function BrandForm({ brand, onDone, onCancel }) {
 //         mandatories, publish_date, production_due, edit_due)
 //   content_items(brand_id, idea_id, campaign_id, title, body,
 //                 status command_review|in_production|review|approved)
-function ContentCenter({ content, ideas = [], brands = [], campaigns = [], assets = [], isCommand, brandColor, subView, googleConnected = false }) {
+function ContentCenter({ content, ideas = [], brands = [], campaigns = [], assets = [], isCommand, canDelete = true, brandColor, subView, googleConnected = false }) {
   const tab = ['bucket', 'ideas', 'production', 'assets'].includes(subView) ? subView : 'bucket';
   const brandById = (id) => brands.find((b) => b.id === id) || null;
 
   if (tab === 'bucket') return <ContentBucketView ideas={ideas} brands={brands} campaigns={campaigns} brandById={brandById} isCommand={isCommand} />;
   if (tab === 'ideas') return <IdeasView ideas={ideas} content={content} brands={brands} campaigns={campaigns} brandById={brandById} isCommand={isCommand} />;
   if (tab === 'assets') return <AssetLibrary assets={assets} content={content} ideas={ideas} brands={brands} brandColor={brandColor} isCommand={isCommand} />;
-  return <ProductionView content={content} ideas={ideas} brands={brands} campaigns={campaigns} brandById={brandById} isCommand={isCommand} googleConnected={googleConnected} />;
+  return <ProductionView content={content} ideas={ideas} brands={brands} campaigns={campaigns} brandById={brandById} isCommand={isCommand} canDelete={canDelete} googleConnected={googleConnected} />;
 }
 
 // =====================================================================
@@ -3404,7 +3409,7 @@ function IdeasView({ ideas, content = [], brands, campaigns, brandById, isComman
 // Command Review (id-prefixed `idea:<uuid>` while dragging) so nothing an
 // idea produces goes unseen by Command. Dropping one on any column — or
 // clicking "Promote to Production" — creates the real content_item.
-function ProductionView({ content, ideas = [], brands, campaigns, brandById, isCommand, googleConnected = false }) {
+function ProductionView({ content, ideas = [], brands, campaigns, brandById, isCommand, canDelete = true, googleConnected = false }) {
   const [editing, setEditing] = useState(null);
   const [viewing, setViewing] = useState(null); // card opened for detail (read-only)
   const [dragId, setDragId] = useState(null);    // card being dragged (real id, or 'idea:<id>')
@@ -3777,8 +3782,10 @@ function ProductionView({ content, ideas = [], brands, campaigns, brandById, isC
                               <button className="btn bg" type="submit" disabled={statusBusy} style={{ fontSize: 11, padding: '3px 7px', color: col.color === '#64BC46' ? undefined : '#64BC46' }}>Advance →</button></form>
                           )}
                           <button type="button" className="btn bg" style={{ fontSize: 11, padding: '3px 7px' }} onClick={() => setEditing(i)}>✎</button>
-                          <form action={deleteAction}><input type="hidden" name="id" value={i.id} />
-                            <button className="btn bg" type="submit" disabled={deletingItem} style={{ fontSize: 11, padding: '3px 7px', color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }}>🗑</button></form>
+                          {canDelete && (
+                            <form action={deleteAction}><input type="hidden" name="id" value={i.id} />
+                              <button className="btn bg" type="submit" disabled={deletingItem} style={{ fontSize: 11, padding: '3px 7px', color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }}>🗑</button></form>
+                          )}
                         </div>
                       )}
                     </div>
