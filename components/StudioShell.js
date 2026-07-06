@@ -2443,6 +2443,21 @@ function LineUpView({ mcItems = [], mcThemes = [], brands = [], isCommand }) {
   const [confirmDel, setConfirmDel] = useState(null);
   const newTitleRef = useRef(null);
 
+  // Per-column filters + sort — same pattern as Content Bucket.
+  const [fTitle, setFTitle] = useState('');
+  const [fTheme, setFTheme] = useState('all');
+  const [fPillar, setFPillar] = useState('all');
+  const [fKind, setFKind] = useState('all');
+  const [fStatus, setFStatus] = useState('all');
+  const [fFrom, setFFrom] = useState('');
+  const [fTo, setFTo] = useState('');
+  const [sortKey, setSortKey] = useState(null); // title | brand | theme | pillar | kind | due_date | status
+  const [sortDir, setSortDir] = useState('asc');
+  function toggleSort(key) {
+    if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortKey(key); setSortDir('asc'); }
+  }
+
   useEffect(() => { setRows(mcItems); }, [mcItems]);
 
   const brandById = (id) => brands.find((b) => b.id === id) || null;
@@ -2493,7 +2508,37 @@ function LineUpView({ mcItems = [], mcThemes = [], brands = [], isCommand }) {
   }
 
   const filtered = brandFilter === 'all' ? rows : rows.filter((r) => r.brand_id === brandFilter);
-  const sorted = [...filtered].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+  // Distinct values actually present, so dropdowns never offer an option
+  // that would return zero rows.
+  const pillarValues = [...new Set(filtered.map((r) => r.pillar).filter(Boolean))].sort();
+  const hasActiveFilter = fTitle || fTheme !== 'all' || fPillar !== 'all' || fKind !== 'all' || fStatus !== 'all' || fFrom || fTo;
+
+  const colFiltered = filtered.filter((r) => {
+    if (fTitle && !(r.title || '').toLowerCase().includes(fTitle.toLowerCase())) return false;
+    if (fTheme !== 'all' && r.theme_id !== fTheme) return false;
+    if (fPillar !== 'all' && r.pillar !== fPillar) return false;
+    if (fKind !== 'all' && r.kind !== fKind) return false;
+    if (fStatus !== 'all' && (r.status || 'queued') !== fStatus) return false;
+    if (fFrom && (!r.due_date || r.due_date < fFrom)) return false;
+    if (fTo && (!r.due_date || r.due_date > fTo)) return false;
+    return true;
+  });
+
+  let sorted = [...colFiltered];
+  if (sortKey) {
+    sorted.sort((a, b) => {
+      let av, bv;
+      if (sortKey === 'brand') { av = brandById(a.brand_id)?.name || ''; bv = brandById(b.brand_id)?.name || ''; }
+      else if (sortKey === 'theme') { av = themeById(a.theme_id)?.name || ''; bv = themeById(b.theme_id)?.name || ''; }
+      else { av = a[sortKey] || ''; bv = b[sortKey] || ''; }
+      if (av < bv) return sortDir === 'asc' ? -1 : 1;
+      if (av > bv) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+  } else {
+    sorted.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  }
 
   const cellInp = { width: '100%', background: 'transparent', border: '1px solid transparent', borderRadius: 6, padding: '6px 7px', color: 'var(--text)', fontSize: 12.5, fontFamily: "'Inter',sans-serif" };
   const cellFocus = (e) => { e.target.style.background = 'var(--bg3)'; e.target.style.borderColor = 'var(--border)'; };
@@ -2520,19 +2565,90 @@ function LineUpView({ mcItems = [], mcThemes = [], brands = [], isCommand }) {
 
       {errMsg && <div className="ap-note" style={{ borderColor: 'rgba(255,100,100,.35)', color: '#ff6464', marginBottom: 12 }}>{errMsg}</div>}
 
-      {sorted.length === 0 ? (
+      {/* Per-column filters — same pattern as Content Bucket. */}
+      <div className="sc" style={{ padding: 12, marginBottom: 18, display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 160 }}>
+          <label style={cLbl}>Title</label>
+          <input style={cInp} value={fTitle} onChange={(e) => setFTitle(e.target.value)} placeholder="Search title…" />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 150 }}>
+          <label style={cLbl}>Theme</label>
+          <select style={cInp} value={fTheme} onChange={(e) => setFTheme(e.target.value)}>
+            <option value="all">All themes</option>
+            {mcThemes.filter((t) => brandFilter === 'all' || t.brand_id === brandFilter).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 140 }}>
+          <label style={cLbl}>Pillar</label>
+          <select style={cInp} value={fPillar} onChange={(e) => setFPillar(e.target.value)}>
+            <option value="all">All pillars</option>
+            {pillarValues.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 140 }}>
+          <label style={cLbl}>Kind</label>
+          <select style={cInp} value={fKind} onChange={(e) => setFKind(e.target.value)}>
+            <option value="all">All kinds</option>
+            {MC_ITEM_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+          </select>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 130 }}>
+          <label style={cLbl}>Due from</label>
+          <input style={cInp} type="date" value={fFrom} onChange={(e) => setFFrom(e.target.value)} />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 130 }}>
+          <label style={cLbl}>Due to</label>
+          <input style={cInp} type="date" value={fTo} onChange={(e) => setFTo(e.target.value)} />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 140 }}>
+          <label style={cLbl}>Status</label>
+          <select style={cInp} value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
+            <option value="all">All statuses</option>
+            {Object.entries(MC_STATUS_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+          </select>
+        </div>
+        {hasActiveFilter && (
+          <button type="button" className="btn bg" style={{ fontSize: 12, height: 34 }}
+            onClick={() => { setFTitle(''); setFTheme('all'); setFPillar('all'); setFKind('all'); setFStatus('all'); setFFrom(''); setFTo(''); }}>
+            ✕ Clear filters
+          </button>
+        )}
+      </div>
+
+      {hasActiveFilter && (
+        <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 14, marginTop: -8 }}>
+          Showing {sorted.length} of {filtered.length} row{filtered.length === 1 ? '' : 's'}
+        </div>
+      )}
+
+      {filtered.length === 0 ? (
         <ComingSoon
           icon="◇"
           title="Nothing in the Line Up yet"
           body={isCommand ? 'Add a row for every piece of collateral you need to produce — a poster, packaging, signage — then move it through Assembly as it gets made.' : 'No items in the Line Up for your brand yet.'}
         />
+      ) : sorted.length === 0 ? (
+        <ComingSoon icon="▦" title="No rows match these filters" body="Try clearing a filter or two." />
       ) : (
         <div className="sc" style={{ overflowX: 'auto', padding: 0 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
             <thead>
               <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
-                {['Title', 'Brand', 'Theme', 'Pillar', 'Kind', 'Due', 'Status', ''].map((h) => (
-                  <th key={h} style={{ padding: '9px 10px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text3)', whiteSpace: 'nowrap' }}>{h}</th>
+                {[
+                  { key: 'title', label: 'Title' },
+                  { key: 'brand', label: 'Brand' },
+                  { key: 'theme', label: 'Theme' },
+                  { key: 'pillar', label: 'Pillar' },
+                  { key: 'kind', label: 'Kind' },
+                  { key: 'due_date', label: 'Due' },
+                  { key: 'status', label: 'Status' },
+                  { key: null, label: '' },
+                ].map((h) => (
+                  <th key={h.label || 'actions'}
+                    onClick={h.key ? () => toggleSort(h.key) : undefined}
+                    style={{ padding: '9px 10px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: sortKey === h.key ? 'var(--text)' : 'var(--text3)', whiteSpace: 'nowrap', cursor: h.key ? 'pointer' : 'default', userSelect: 'none' }}>
+                    {h.label}{h.key && <span style={{ marginLeft: 4, opacity: sortKey === h.key ? 1 : 0.25 }}>{sortKey === h.key && sortDir === 'desc' ? '▼' : '▲'}</span>}
+                  </th>
                 ))}
               </tr>
             </thead>
