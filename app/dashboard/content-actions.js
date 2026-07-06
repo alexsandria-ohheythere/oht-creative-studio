@@ -10,10 +10,13 @@ import { createClient } from '../../lib/supabase-server';
 // Real schema (live DB), do not assume columns beyond these:
 //   ideas:         id, brand_id, campaign_id, title, notes, status, ready,
 //                  pillar, channel, format, hook, caption, hashtags,
-//                  mandatories, publish_date, production_due, edit_due,
+//                  mandatories, script, visual_refs, reference_links,
+//                  publish_date, production_due, edit_due,
 //                  carousel_slides (jsonb array, always normalized to 5
 //                  string entries; only shown/edited in the UI when format
-//                  is a Carousel variant)
+//                  is a Carousel variant). script/visual_refs/reference_links
+//                  are only shown/edited in the UI when format is a video
+//                  variant (see isVideo in StudioShell.js).
 //                  status in ('new','approved','archived')
 //                  ready: false = row lives in the Content Bucket table only,
 //                         true  = also shown as a card in the Ideas module
@@ -69,6 +72,9 @@ export async function saveIdea(prevState, formData) {
   const caption = nz(formData.get('caption'));
   const hashtags = nz(formData.get('hashtags'));
   const mandatories = nz(formData.get('mandatories'));
+  const script = nz(formData.get('script'));
+  const visual_refs = nz(formData.get('visual_refs'));
+  const reference_links = nz(formData.get('reference_links'));
   const publish_date = isoDate(formData.get('publish_date'));
   const production_due = dueBefore(publish_date, 5);
   const edit_due = dueBefore(publish_date, 3);
@@ -101,6 +107,7 @@ export async function saveIdea(prevState, formData) {
   const payload = {
     title, brand_id, campaign_id, pillar, channel, format,
     notes, hook, caption, hashtags, mandatories,
+    script, visual_refs, reference_links,
     publish_date, production_due, edit_due, status, ready,
     carousel_slides,
   };
@@ -158,6 +165,9 @@ export async function duplicateIdea(prevState, formData) {
     caption: original.caption,
     hashtags: original.hashtags,
     mandatories: original.mandatories,
+    script: original.script,
+    visual_refs: original.visual_refs,
+    reference_links: original.reference_links,
     publish_date: original.publish_date,
     production_due: original.production_due,
     edit_due: original.edit_due,
