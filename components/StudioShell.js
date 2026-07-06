@@ -3084,6 +3084,17 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
   const [ready, setReady] = useState(false);
   const [slides, setSlides] = useState(['', '', '', '', '']);
 
+  // Per-column filters for the table below — independent of the "add/edit
+  // row" form fields above, which reuse some of the same names.
+  const [fTitle, setFTitle] = useState('');
+  const [fBrand, setFBrand] = useState('all');
+  const [fPillar, setFPillar] = useState('all');
+  const [fChannel, setFChannel] = useState('all');
+  const [fFormat, setFFormat] = useState('all');
+  const [fReady, setFReady] = useState('all'); // all | ready | draft
+  const [fFrom, setFFrom] = useState('');
+  const [fTo, setFTo] = useState('');
+
   useEffect(() => { if (state?.ok) { setShowForm(false); setEditing(null); } }, [state?.ok]);
 
   const selectedCamp = campaigns.find((c) => c.id === campId);
@@ -3119,11 +3130,32 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
     readyAction(fd);
   }
 
+  // Distinct values actually present in the data, so dropdowns only ever
+  // show options that could return results (no picking "Reels" and getting
+  // an empty table because nothing uses that format yet).
+  const pillarValues = [...new Set(ideas.map((i) => i.pillar).filter(Boolean))].sort();
+  const channelValues = [...new Set(ideas.map((i) => i.channel).filter(Boolean))].sort();
+  const formatValues = [...new Set(ideas.map((i) => i.format).filter(Boolean))].sort();
+  const hasActiveFilter = fTitle || fBrand !== 'all' || fPillar !== 'all' || fChannel !== 'all' || fFormat !== 'all' || fReady !== 'all' || fFrom || fTo;
+
+  const filteredIdeas = ideas.filter((i) => {
+    if (fTitle && !(i.title || '').toLowerCase().includes(fTitle.toLowerCase())) return false;
+    if (fBrand !== 'all' && i.brand_id !== fBrand) return false;
+    if (fPillar !== 'all' && i.pillar !== fPillar) return false;
+    if (fChannel !== 'all' && i.channel !== fChannel) return false;
+    if (fFormat !== 'all' && i.format !== fFormat) return false;
+    if (fReady === 'ready' && !i.ready) return false;
+    if (fReady === 'draft' && i.ready) return false;
+    if (fFrom && (!i.publish_date || i.publish_date < fFrom)) return false;
+    if (fTo && (!i.publish_date || i.publish_date > fTo)) return false;
+    return true;
+  });
+
   // Group ideas by campaign; ideas without a (valid) campaign fall into
   // a trailing "No campaign" table so nothing gets lost from view.
-  const groups = campaigns.map((c) => ({ campaign: c, rows: ideas.filter((i) => i.campaign_id === c.id) }));
+  const groups = campaigns.map((c) => ({ campaign: c, rows: filteredIdeas.filter((i) => i.campaign_id === c.id) }));
   const campIds = new Set(campaigns.map((c) => c.id));
-  const unassigned = ideas.filter((i) => !i.campaign_id || !campIds.has(i.campaign_id));
+  const unassigned = filteredIdeas.filter((i) => !i.campaign_id || !campIds.has(i.campaign_id));
   if (unassigned.length > 0 || campaigns.length === 0) {
     groups.push({ campaign: null, rows: unassigned });
   }
@@ -3304,6 +3336,74 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
       {ideas.length === 0 && !showForm ? (
         <ComingSoon icon="▦" title="No rows yet" body={isCommand ? 'Add your first row — pick a campaign, pillar, channel and format. Flip Ready when it is solid enough to work as an idea.' : 'No content bucket rows for your brand yet.'} actionLabel={isCommand ? '＋ New row' : undefined} onAction={isCommand ? () => openNewRow('') : undefined} />
       ) : (
+        <>
+          {/* Per-column filters — narrows every campaign table below at once. */}
+          <div className="sc" style={{ padding: 12, marginBottom: 18, display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 160 }}>
+              <label style={cLbl}>Title</label>
+              <input style={cInp} value={fTitle} onChange={(e) => setFTitle(e.target.value)} placeholder="Search title…" />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 140 }}>
+              <label style={cLbl}>Brand</label>
+              <select style={cInp} value={fBrand} onChange={(e) => setFBrand(e.target.value)}>
+                <option value="all">All brands</option>
+                {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 140 }}>
+              <label style={cLbl}>Pillar</label>
+              <select style={cInp} value={fPillar} onChange={(e) => setFPillar(e.target.value)}>
+                <option value="all">All pillars</option>
+                {pillarValues.map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 130 }}>
+              <label style={cLbl}>Channel</label>
+              <select style={cInp} value={fChannel} onChange={(e) => setFChannel(e.target.value)}>
+                <option value="all">All channels</option>
+                {channelValues.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 130 }}>
+              <label style={cLbl}>Format</label>
+              <select style={cInp} value={fFormat} onChange={(e) => setFFormat(e.target.value)}>
+                <option value="all">All formats</option>
+                {formatValues.map((f) => <option key={f} value={f}>{f}</option>)}
+              </select>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 130 }}>
+              <label style={cLbl}>Publish from</label>
+              <input style={cInp} type="date" value={fFrom} onChange={(e) => setFFrom(e.target.value)} />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 130 }}>
+              <label style={cLbl}>Publish to</label>
+              <input style={cInp} type="date" value={fTo} onChange={(e) => setFTo(e.target.value)} />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 110 }}>
+              <label style={cLbl}>Ready</label>
+              <select style={cInp} value={fReady} onChange={(e) => setFReady(e.target.value)}>
+                <option value="all">All</option>
+                <option value="ready">Ready</option>
+                <option value="draft">Draft</option>
+              </select>
+            </div>
+            {hasActiveFilter && (
+              <button type="button" className="btn bg" style={{ fontSize: 12, height: 34 }}
+                onClick={() => { setFTitle(''); setFBrand('all'); setFPillar('all'); setFChannel('all'); setFFormat('all'); setFReady('all'); setFFrom(''); setFTo(''); }}>
+                ✕ Clear filters
+              </button>
+            )}
+          </div>
+
+          {hasActiveFilter && (
+            <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 14, marginTop: -8 }}>
+              Showing {filteredIdeas.length} of {ideas.length} row{ideas.length === 1 ? '' : 's'}
+            </div>
+          )}
+
+          {filteredIdeas.length === 0 ? (
+            <ComingSoon icon="▦" title="No rows match these filters" body="Try clearing a filter or two." />
+          ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
           {groups.map((g) => (
             <div key={g.campaign?.id || 'none'}>
@@ -3378,6 +3478,8 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
             </div>
           ))}
         </div>
+          )}
+        </>
       )}
     </>
   );
