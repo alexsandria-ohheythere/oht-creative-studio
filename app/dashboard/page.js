@@ -52,11 +52,22 @@ export default async function DashboardPage() {
     .select('id, brand_id, content_id, storage_path, kind, created_at')
     .order('created_at', { ascending: false });
 
-  // Load brand templates for the Marketing Collaterals → Theme module.
-  // Command-only table (RLS enforces this); freelancers will just get [].
-  const { data: templates } = await supabase
-    .from('brand_templates')
-    .select('id, brand_id, name, kind, body, created_at')
+  // Load Marketing Collaterals data — independent from the social pipeline.
+  // Theme (mc_themes) works like Campaigns; Line Up + Assembly are both
+  // views over mc_items; Assets aggregates mc_assets + mc_items links.
+  const { data: mcThemes } = await supabase
+    .from('mc_themes')
+    .select('id, brand_id, name, goal, status, starts_on, ends_on, pillars, created_at')
+    .order('created_at', { ascending: false });
+
+  const { data: mcItems } = await supabase
+    .from('mc_items')
+    .select('id, brand_id, theme_id, pillar, kind, title, notes, status, due_date, attachments, created_at')
+    .order('created_at', { ascending: false });
+
+  const { data: mcAssets } = await supabase
+    .from('mc_assets')
+    .select('id, brand_id, item_id, storage_path, kind, created_at')
     .order('created_at', { ascending: false });
 
   const safeProfile = profile || {
@@ -82,7 +93,9 @@ export default async function DashboardPage() {
       brands={brands || []}
       campaigns={campaigns || []}
       assets={assets || []}
-      templates={templates || []}
+      mcThemes={mcThemes || []}
+      mcItems={mcItems || []}
+      mcAssets={mcAssets || []}
       googleConnected={googleConnected}
     />
   );
