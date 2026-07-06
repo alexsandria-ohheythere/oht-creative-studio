@@ -5,6 +5,7 @@ import appConfig from '../config/app.json';
 import { saveBrand, archiveBrand, deleteBrand } from '../app/dashboard/brand-actions';
 import { saveCampaign, deleteCampaign } from '../app/dashboard/campaign-actions';
 import { saveAsset, deleteAsset } from '../app/dashboard/asset-actions';
+import { saveTemplate, deleteTemplate } from '../app/dashboard/theme-actions';
 import {
   saveIdea, deleteIdea, duplicateIdea, setIdeaReady, promoteIdeaToProduction,
   saveContent, setContentStatus, deleteContent, setContentAttachments,
@@ -24,7 +25,7 @@ function initials(name = '') {
   return name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 }
 
-export default function StudioShell({ profile, email, content, brands = [], campaigns = [], ideas = [], assets = [], googleConnected = false }) {
+export default function StudioShell({ profile, email, content, brands = [], campaigns = [], ideas = [], assets = [], templates = [], googleConnected = false }) {
   const role = profile.role === 'command' ? 'command' : 'freelance';
   const visibleNav = NAV.filter((n) => n.roles.includes(role));
 
@@ -223,6 +224,34 @@ export default function StudioShell({ profile, email, content, brands = [], camp
 
             {parentId === 'content' && (
               <ContentCenter content={content} ideas={ideas} brands={brands} campaigns={campaigns} assets={assets} isCommand={isCommand} brandColor={brandColor} subView={subView} googleConnected={googleConnected} />
+            )}
+
+            {parentId === 'mc' && subView === 'theme' && (
+              <ThemeCenter templates={templates} brands={brands} isCommand={isCommand} />
+            )}
+
+            {parentId === 'mc' && subView === 'content' && (
+              <IdeasView ideas={ideas} content={content} brands={brands} campaigns={campaigns} brandById={(id) => brands.find((b) => b.id === id) || null} isCommand={isCommand} />
+            )}
+
+            {parentId === 'mc' && subView === 'briefs' && (
+              <>
+                <div className="ph">
+                  <div>
+                    <div className="pt">Briefs</div>
+                    <div className="ps">Marketing Collaterals</div>
+                  </div>
+                </div>
+                <ComingSoon
+                  icon="◇"
+                  title="Briefs needs a quick decision"
+                  body="The standalone briefs table was retired when its fields (hook, caption, hashtags, mandatories, references) got folded directly into Ideas — so there's no separate 'brief' step left to manage there. Before building a Briefs screen here, it's worth deciding: should this tab (a) reuse Ideas the same way Content does, (b) become a dedicated brief/spec doc for physical collateral (posters, packaging, signage) that's genuinely different from a social idea, or (c) get removed from this nav group? Flag your call and this gets wired up next."
+                />
+              </>
+            )}
+
+            {parentId === 'mc' && subView === 'production' && (
+              <ProductionView content={content} ideas={ideas} brands={brands} campaigns={campaigns} brandById={(id) => brands.find((b) => b.id === id) || null} isCommand={isCommand} googleConnected={googleConnected} />
             )}
 
             {parentId === 'mc' && subView === 'assets' && (
@@ -1722,6 +1751,170 @@ function ContentCenter({ content, ideas = [], brands = [], campaigns = [], asset
   if (tab === 'ideas') return <IdeasView ideas={ideas} content={content} brands={brands} campaigns={campaigns} brandById={brandById} isCommand={isCommand} />;
   if (tab === 'assets') return <AssetLibrary assets={assets} content={content} ideas={ideas} brands={brands} brandColor={brandColor} isCommand={isCommand} />;
   return <ProductionView content={content} ideas={ideas} brands={brands} campaigns={campaigns} brandById={brandById} isCommand={isCommand} googleConnected={googleConnected} />;
+}
+
+// =====================================================================
+// THEME — reusable collateral templates (public.brand_templates: id,
+// brand_id, name, kind, body). Command-only per RLS + nav config.
+// list ↔ form, grouped by brand, same visual language as Campaigns.
+// =====================================================================
+const TEMPLATE_KINDS = ['Poster', 'Menu Board', 'Packaging', 'Table Tent', 'Flyer', 'Signage', 'Social Cover', 'Other'];
+
+function ThemeCenter({ templates = [], brands = [], isCommand }) {
+  const [view, setView] = useState('list'); // 'list' | 'form'
+  const [editing, setEditing] = useState(null);
+  const [confirmDel, setConfirmDel] = useState(null); // id currently confirming delete
+  const [brandFilter, setBrandFilter] = useState('all');
+
+  const [delState, deleteAction, deleting] = useActionState(deleteTemplate, {});
+  useEffect(() => {
+    if (delState && delState.deleted) setConfirmDel(null);
+  }, [delState]);
+
+  const brandById = (id) => brands.find((b) => b.id === id) || null;
+
+  function openNew() { setEditing(null); setView('form'); }
+  function openEdit(t) { setEditing(t); setView('form'); }
+  function backToList() { setView('list'); setEditing(null); }
+
+  if (view === 'form') {
+    return <ThemeForm template={editing} brands={brands} onDone={backToList} onCancel={backToList} />;
+  }
+
+  const filtered = brandFilter === 'all' ? templates : templates.filter((t) => t.brand_id === brandFilter);
+
+  return (
+    <>
+      <div className="ph">
+        <div>
+          <div className="pt">Theme</div>
+          <div className="ps">Reusable templates for posters, packaging, signage & other collateral</div>
+        </div>
+        {isCommand && <button type="button" className="btn bl" onClick={openNew}>＋ New Template</button>}
+      </div>
+
+      {brands.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+          <div className={`cvw ${brandFilter === 'all' ? 'on' : ''}`} onClick={() => setBrandFilter('all')}>All brands</div>
+          {brands.map((b) => (
+            <div key={b.id} className={`cvw ${brandFilter === b.id ? 'on' : ''}`} style={brandFilter === b.id ? { color: b.color, background: b.color + '22' } : { color: b.color }} onClick={() => setBrandFilter(b.id)}>{b.name}</div>
+          ))}
+        </div>
+      )}
+
+      {delState?.error && (
+        <div className="ap-note" style={{ borderColor: 'rgba(255,100,100,.35)', color: '#ff6464', marginBottom: 12 }}>
+          {delState.error}
+        </div>
+      )}
+
+      {filtered.length === 0 ? (
+        <ComingSoon
+          icon="◇"
+          title="No templates yet"
+          body={isCommand
+            ? 'Add a template for each recurring piece of collateral — a poster layout, a menu board format, packaging artwork specs — so Production always starts from the right base.'
+            : 'No templates have been added yet.'}
+        />
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 16 }}>
+          {filtered.map((t) => {
+            const brand = brandById(t.brand_id);
+            const bc = brand?.color || '#9494AA';
+            const isConfirming = confirmDel === t.id;
+            return (
+              <div key={t.id} className="sc" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ height: 5, background: bc }} />
+                <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10, flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                    <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 15, lineHeight: 1.25 }}>{t.name}</div>
+                    {t.kind && <Pill text={t.kind} color={bc} />}
+                  </div>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: bc, background: bc + '1c', padding: '2px 8px', borderRadius: 5, width: 'fit-content' }}>{brand?.name || 'Unassigned'}</span>
+                  {t.body && (
+                    <div style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{t.body}</div>
+                  )}
+                  {isCommand && (
+                    <div style={{ display: 'flex', gap: 8, marginTop: 'auto', paddingTop: 8, borderTop: '1px solid var(--border)' }}>
+                      <button type="button" className="btn bg" style={{ flex: 1 }} onClick={() => openEdit(t)}>✎ Edit</button>
+                      {!isConfirming ? (
+                        <button type="button" className="btn bg" style={{ color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }} onClick={() => setConfirmDel(t.id)}>🗑</button>
+                      ) : (
+                        <form action={deleteAction} style={{ display: 'flex', gap: 6 }}>
+                          <input type="hidden" name="id" value={t.id} />
+                          <button className="btn" type="submit" disabled={deleting} style={{ background: '#ff6464', color: '#111', borderColor: '#ff6464' }}>{deleting ? '…' : 'Confirm'}</button>
+                          <button type="button" className="btn bg" onClick={() => setConfirmDel(null)}>✕</button>
+                        </form>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+}
+
+function ThemeForm({ template, brands = [], onDone, onCancel }) {
+  const [state, formAction, pending] = useActionState(saveTemplate, {});
+  const [brandId, setBrandId] = useState(template?.brand_id || (brands[0]?.id || ''));
+  const [kind, setKind] = useState(template?.kind || TEMPLATE_KINDS[0]);
+
+  useEffect(() => {
+    if (state?.ok) onDone();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+
+  return (
+    <>
+      <div className="ph">
+        <div>
+          <div className="pt">{template ? 'Edit Template' : 'New Template'}</div>
+          <div className="ps">Theme · Marketing Collaterals</div>
+        </div>
+        <button type="button" className="btn bg" onClick={onCancel}>← Back</button>
+      </div>
+
+      <form action={formAction} className="sc" style={{ padding: 20, maxWidth: 640 }}>
+        {template && <input type="hidden" name="id" value={template.id} />}
+
+        {state?.error && (
+          <div className="ap-note" style={{ borderColor: 'rgba(255,100,100,.35)', color: '#ff6464', marginBottom: 14 }}>
+            {state.error}
+          </div>
+        )}
+
+        <CField label="Brand">
+          <select name="brand_id" value={brandId} onChange={(e) => setBrandId(e.target.value)} style={cInp} required>
+            <option value="" disabled>Select a brand…</option>
+            {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
+        </CField>
+
+        <CField label="Template name">
+          <input type="text" name="name" defaultValue={template?.name || ''} style={cInp} placeholder="e.g. A2 In-store Poster" required />
+        </CField>
+
+        <CField label="Kind">
+          <select name="kind" value={kind} onChange={(e) => setKind(e.target.value)} style={cInp}>
+            {TEMPLATE_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+          </select>
+        </CField>
+
+        <CField label="Template details">
+          <textarea name="body" defaultValue={template?.body || ''} style={cTa(160)} placeholder="Dimensions, layout notes, copy blocks, file links, print specs…" />
+        </CField>
+
+        <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
+          <button className="btn bl" type="submit" disabled={pending}>{pending ? 'Saving…' : 'Save Template'}</button>
+          <button type="button" className="btn bg" onClick={onCancel}>Cancel</button>
+        </div>
+      </form>
+    </>
+  );
 }
 
 // Shared form atoms.
