@@ -2050,6 +2050,26 @@ function CField({ label, children }) {
 function Pill({ text, color }) {
   return <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color, background: color + '22', padding: '3px 8px', borderRadius: 20 }}>{text}</span>;
 }
+// Notion-style row popup — overlays whatever list/table/board is underneath
+// instead of replacing the whole page, so clicking a row to view or edit it
+// never loses your scroll position or filters. Click the backdrop or ✕ to
+// close; clicks inside the panel don't bubble up and close it accidentally.
+function Modal({ title, subtitle, onClose, children, maxWidth = 640 }) {
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(10,10,14,.7)', backdropFilter: 'blur(2px)', zIndex: 200, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '48px 20px', overflowY: 'auto' }}>
+      <div onClick={(e) => e.stopPropagation()} className="sc" style={{ width: '100%', maxWidth, padding: 0, overflow: 'hidden' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, padding: '16px 20px', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 1 }}>
+          <div>
+            <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 15, lineHeight: 1.3 }}>{title}</div>
+            {subtitle && <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>{subtitle}</div>}
+          </div>
+          <button type="button" className="btn bg" onClick={onClose} style={{ fontSize: 12, flexShrink: 0 }}>✕</button>
+        </div>
+        <div style={{ padding: 20 }}>{children}</div>
+      </div>
+    </div>
+  );
+}
 const STATUS_COLOR = {
   new: '#9494AA', draft: '#9494AA',
   approved: '#64BC46',
@@ -3185,19 +3205,18 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
   // the only place to see the full hook/caption/hashtags/mandatories/notes
   // without opening the edit form. Available to everyone (view is safe
   // for freelance too), even though edit/duplicate/delete stay command-only.
+  // Rendered as a Modal popup below (Notion-style row peek) instead of
+  // replacing the whole page, so the table/filters/scroll stay intact.
+  let viewingPanel = null;
   if (viewing) {
     const i = viewing;
     const b = brandById(i.brand_id);
     const bc = b?.color || '#9494AA';
     const camp = campaigns.find((c) => c.id === i.campaign_id);
     const cc = CHANNEL_COLOR[i.channel] || '#9494AA';
-    return (
-      <>
-        <div className="ph">
-          <div><div className="pt">{i.title || 'Untitled'}</div><div className="ps">Content Bucket row detail</div></div>
-          <button type="button" className="btn bg" onClick={() => setViewing(null)}>← Back</button>
-        </div>
-        <div className="sc" style={{ padding: 22, maxWidth: 680, display: 'flex', flexDirection: 'column', gap: 16 }}>
+    viewingPanel = (
+      <Modal title={i.title || 'Untitled'} subtitle="Content Bucket row detail" onClose={() => setViewing(null)}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             <span className="ap-chip" style={{ background: bc + '22', color: bc }}>{b?.name || 'Unassigned'}</span>
             {camp && <span className="ap-chip" style={{ background: 'var(--bg3)', color: 'var(--text2)' }}>◆ {camp.name}</span>}
@@ -3238,12 +3257,14 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
             </div>
           )}
         </div>
-      </>
+      </Modal>
     );
   }
 
   return (
     <>
+      {viewingPanel}
+
       <div className="ph">
         <div>
           <div className="pt">Content Bucket</div>
@@ -3257,7 +3278,8 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
       )}
 
       {showForm && (
-        <form action={formAction} className="sc" style={{ padding: 22, maxWidth: 720, marginBottom: 18 }}>
+        <Modal title={editing ? 'Edit row' : 'New row'} subtitle={editing ? editing.title : 'Add a row to the Content Bucket'} onClose={() => { setShowForm(false); setEditing(null); }} maxWidth={720}>
+        <form action={formAction}>
           {editing && <input type="hidden" name="id" value={editing.id} />}
           <input type="hidden" name="brand_id" value={brandId} />
           <input type="hidden" name="campaign_id" value={campId} />
@@ -3352,6 +3374,7 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
             <button className="btn bg" type="button" onClick={() => { setShowForm(false); setEditing(null); }}>Cancel</button>
           </div>
         </form>
+        </Modal>
       )}
 
       {ideas.length === 0 && !showForm ? (
@@ -3536,6 +3559,8 @@ function IdeasView({ ideas, content = [], brands, campaigns, brandById, isComman
 
   // Full detail — the card view clamps caption to 3 lines and never shows
   // mandatories/notes at all, so this is the only place to read everything.
+  // Rendered as a Modal popup (see below) instead of replacing the page.
+  let viewingPanel = null;
   if (viewing) {
     const i = viewing;
     const b = brandById(i.brand_id);
@@ -3543,13 +3568,9 @@ function IdeasView({ ideas, content = [], brands, campaigns, brandById, isComman
     const camp = campaigns.find((c) => c.id === i.campaign_id);
     const cc = CHANNEL_COLOR[i.channel] || '#9494AA';
     const alreadyInProduction = promotedIdeaIds.has(i.id);
-    return (
-      <>
-        <div className="ph">
-          <div><div className="pt">{i.title || 'Untitled'}</div><div className="ps">Idea detail</div></div>
-          <button type="button" className="btn bg" onClick={() => setViewing(null)}>← Back</button>
-        </div>
-        <div className="sc" style={{ padding: 22, maxWidth: 680, display: 'flex', flexDirection: 'column', gap: 16 }}>
+    viewingPanel = (
+      <Modal title={i.title || 'Untitled'} subtitle="Idea detail" onClose={() => setViewing(null)}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             <span className="ap-chip" style={{ background: bc + '22', color: bc }}>{b?.name || 'Unassigned'}</span>
             {camp && <span className="ap-chip" style={{ background: 'var(--bg3)', color: 'var(--text2)' }}>◆ {camp.name}</span>}
@@ -3595,7 +3616,7 @@ function IdeasView({ ideas, content = [], brands, campaigns, brandById, isComman
             </div>
           )}
         </div>
-      </>
+      </Modal>
     );
   }
 
@@ -3611,6 +3632,8 @@ function IdeasView({ ideas, content = [], brands, campaigns, brandById, isComman
 
   return (
     <>
+      {viewingPanel}
+
       <div className="ph">
         <div>
           <div className="pt">Ideas</div>
