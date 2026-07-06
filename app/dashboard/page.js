@@ -48,7 +48,7 @@ export default async function DashboardPage() {
     // table, split by the `ready` flag). Briefs has been retired.
     supabase
       .from('ideas')
-      .select('id, brand_id, campaign_id, pillar, channel, format, title, notes, hook, caption, hashtags, mandatories, publish_date, production_due, edit_due, status, ready, carousel_slides, created_at')
+      .select('id, brand_id, campaign_id, pillar, channel, format, title, notes, hook, caption, hashtags, mandatories, script, visual_refs, reference_links, publish_date, production_due, edit_due, status, ready, carousel_slides, created_at')
       .order('created_at', { ascending: false }),
 
     // Campaigns. RLS scopes these (command sees all, freelancers see one).
