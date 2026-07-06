@@ -3386,6 +3386,9 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
   const pillarOptions = Array.isArray(selectedCamp?.pillars) ? selectedCamp.pillars : [];
   const formatOptions = FORMATS_BY_CHANNEL[channel] || [];
   const isCarousel = /carousel/i.test(format);
+  // Video-type formats need a script, visual shot notes, and reference
+  // links — carousel gets its own dedicated slide-by-slide UI instead.
+  const isVideo = /video|reel|shorts?|live stream|podcast/i.test(format);
 
   function openNewRow(forCampaignId) {
     setEditing(null);
@@ -3488,6 +3491,9 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
           <DateRow publish={i.publish_date} production={i.production_due} edit={i.edit_due} />
 
           {i.hook && <div><div style={cLbl}>Hook</div><div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{i.hook}</div></div>}
+          {i.script && <div><div style={cLbl}>Script</div><div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{i.script}</div></div>}
+          {i.visual_refs && <div><div style={cLbl}>Visual References</div><div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{i.visual_refs}</div></div>}
+          {i.reference_links && <div><div style={cLbl}>Reference Links</div><div style={{ fontSize: 13, color: 'var(--text2)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{i.reference_links}</div></div>}
           {i.caption && <div><div style={cLbl}>Caption</div><div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{i.caption}</div></div>}
           {i.hashtags && <div><div style={cLbl}>Hashtags</div><div style={{ fontSize: 13, color: cc, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{i.hashtags}</div></div>}
           {i.mandatories && <div><div style={cLbl}>Mandatories</div><div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{i.mandatories}</div></div>}
@@ -3506,7 +3512,7 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
             </div>
           )}
 
-          {!i.hook && !i.caption && !i.hashtags && !i.mandatories && !i.notes && (
+          {!i.hook && !i.script && !i.visual_refs && !i.reference_links && !i.caption && !i.hashtags && !i.mandatories && !i.notes && (
             <div style={{ fontSize: 12, color: 'var(--text3)' }}>No additional details filled in yet.</div>
           )}
 
@@ -3616,6 +3622,15 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
           </CField>
 
           <CField label="Hook"><textarea style={cTa(60)} name="hook" defaultValue={editing?.hook || ''} placeholder="The scroll-stopper. First line / first 2 seconds." /></CField>
+
+          {isVideo && (
+            <>
+              <CField label="Script"><textarea style={cTa(140)} name="script" defaultValue={editing?.script || ''} placeholder="Full shot-by-shot script or voiceover — what's said and when." /></CField>
+              <CField label="Visual References"><textarea style={cTa(80)} name="visual_refs" defaultValue={editing?.visual_refs || ''} placeholder="B-roll needed, shot list, visual style/mood, on-screen text — anything the shooter/editor needs to see it the way you do." /></CField>
+              <CField label="Reference Links"><textarea style={cTa(60)} name="reference_links" defaultValue={editing?.reference_links || ''} placeholder="Inspiration or similar videos — paste one link per line." /></CField>
+            </>
+          )}
+
           <CField label="Caption"><textarea style={cTa(90)} name="caption" defaultValue={editing?.caption || ''} placeholder="The full caption copy." /></CField>
           <CField label="Hashtags"><textarea style={cTa(50)} name="hashtags" defaultValue={editing?.hashtags || ''} placeholder="#matcha #specialtytea #ohheythere" /></CField>
           <CField label="Mandatories"><textarea style={cTa(60)} name="mandatories" defaultValue={editing?.mandatories || ''} placeholder="Must-includes: logo, link in bio, disclaimer, tag partners, etc." /></CField>
@@ -3841,6 +3856,9 @@ function IdeasView({ ideas, content = [], brands, campaigns, brandById, isComman
           <DateRow publish={i.publish_date} production={i.production_due} edit={i.edit_due} />
 
           {i.hook && <div><div style={cLbl}>Hook</div><div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{i.hook}</div></div>}
+          {i.script && <div><div style={cLbl}>Script</div><div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{i.script}</div></div>}
+          {i.visual_refs && <div><div style={cLbl}>Visual References</div><div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{i.visual_refs}</div></div>}
+          {i.reference_links && <div><div style={cLbl}>Reference Links</div><div style={{ fontSize: 13, color: 'var(--text2)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{i.reference_links}</div></div>}
           {i.caption && <div><div style={cLbl}>Caption</div><div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{i.caption}</div></div>}
           {i.hashtags && <div><div style={cLbl}>Hashtags</div><div style={{ fontSize: 13, color: cc, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{i.hashtags}</div></div>}
           {i.mandatories && <div><div style={cLbl}>Mandatories</div><div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{i.mandatories}</div></div>}
@@ -4202,6 +4220,9 @@ function ProductionView({ content, ideas = [], brands, campaigns, brandById, isC
             <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text3)' }}>From idea: {linkedIdea.title}</div>
               {linkedIdea.hook && <div><div style={cLbl}>Hook</div><div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{linkedIdea.hook}</div></div>}
+              {linkedIdea.script && <div><div style={cLbl}>Script</div><div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{linkedIdea.script}</div></div>}
+              {linkedIdea.visual_refs && <div><div style={cLbl}>Visual References</div><div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{linkedIdea.visual_refs}</div></div>}
+              {linkedIdea.reference_links && <div><div style={cLbl}>Reference Links</div><div style={{ fontSize: 13, color: 'var(--text2)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{linkedIdea.reference_links}</div></div>}
               {linkedIdea.caption && <div><div style={cLbl}>Caption</div><div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{linkedIdea.caption}</div></div>}
               {linkedIdea.hashtags && <div><div style={cLbl}>Hashtags</div><div style={{ fontSize: 13, color: cc, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{linkedIdea.hashtags}</div></div>}
               {linkedIdea.mandatories && <div><div style={cLbl}>Mandatories</div><div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{linkedIdea.mandatories}</div></div>}
@@ -4218,7 +4239,7 @@ function ProductionView({ content, ideas = [], brands, campaigns, brandById, isC
                   </div>
                 </div>
               )}
-              {!linkedIdea.hook && !linkedIdea.caption && !linkedIdea.hashtags && !linkedIdea.mandatories && !linkedIdea.notes && (
+              {!linkedIdea.hook && !linkedIdea.script && !linkedIdea.visual_refs && !linkedIdea.reference_links && !linkedIdea.caption && !linkedIdea.hashtags && !linkedIdea.mandatories && !linkedIdea.notes && (
                 <div style={{ fontSize: 12, color: 'var(--text3)' }}>The linked idea has no additional details filled in.</div>
               )}
             </div>
