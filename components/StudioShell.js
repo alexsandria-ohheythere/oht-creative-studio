@@ -3390,6 +3390,9 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
 function IdeasView({ ideas, content = [], brands, campaigns, brandById, isCommand }) {
   const readyIdeas = ideas.filter((i) => i.ready);
   const [viewing, setViewing] = useState(null); // idea opened for full-detail read-only view
+  const [brandFilter, setBrandFilter] = useState(brands.length === 1 ? brands[0].id : 'all');
+  const [statusFilter, setStatusFilter] = useState('all'); // all | new | production
+  const [viewMode, setViewMode] = useState('grid'); // grid | table
   const [, promoteAction, promoting] = useActionState(promoteIdeaToProduction, {});
   const [delState, deleteAction, deletingIdea] = useActionState(deleteIdea, {});
 
@@ -3460,6 +3463,16 @@ function IdeasView({ ideas, content = [], brands, campaigns, brandById, isComman
     );
   }
 
+  // Brand tab → status filter → the resulting list feeds both view modes.
+  const brandFiltered = brandFilter === 'all' ? readyIdeas : readyIdeas.filter((i) => i.brand_id === brandFilter);
+  const filtered = brandFiltered.filter((i) => {
+    if (statusFilter === 'all') return true;
+    const inProd = promotedIdeaIds.has(i.id);
+    return statusFilter === 'production' ? inProd : !inProd;
+  });
+  const newCount = brandFiltered.filter((i) => !promotedIdeaIds.has(i.id)).length;
+  const prodCount = brandFiltered.filter((i) => promotedIdeaIds.has(i.id)).length;
+
   return (
     <>
       <div className="ph">
@@ -3467,17 +3480,91 @@ function IdeasView({ ideas, content = [], brands, campaigns, brandById, isComman
           <div className="pt">Ideas</div>
           <div className="ps">{readyIdeas.length} ready concept{readyIdeas.length === 1 ? '' : 's'} · fill more rows in the Content Bucket</div>
         </div>
+        <div className="cvws">
+          <div className={`cvw ${viewMode === 'grid' ? 'on' : ''}`} onClick={() => setViewMode('grid')}>▦ Grid</div>
+          <div className={`cvw ${viewMode === 'table' ? 'on' : ''}`} onClick={() => setViewMode('table')}>☰ Table</div>
+        </div>
       </div>
 
       {delState?.error && (
         <div className="ap-note" style={{ borderColor: 'rgba(255,100,100,.35)', color: '#ff6464' }}>{delState.error}</div>
       )}
 
-      {readyIdeas.length === 0 ? (
-        <ComingSoon icon="◇" title="No ideas ready yet" body={isCommand ? 'Fill rows in the Content Bucket, then flip one to Ready — it pops up here as a card.' : 'No ideas ready for your brand yet.'} />
+      {/* Brand tabs — only worth showing once there's more than one brand to split by. */}
+      {brands.length > 1 && (
+        <div className="cvws" style={{ display: 'flex', flexWrap: 'wrap', width: 'fit-content', maxWidth: '100%', marginBottom: 10 }}>
+          <div className={`cvw ${brandFilter === 'all' ? 'on' : ''}`} onClick={() => setBrandFilter('all')}>All brands</div>
+          {brands.map((b) => (
+            <div key={b.id} className={`cvw ${brandFilter === b.id ? 'on' : ''}`} onClick={() => setBrandFilter(b.id)}
+              style={brandFilter === b.id ? { color: b.color, background: b.color + '22' } : { color: b.color }}>{b.name}</div>
+          ))}
+        </div>
+      )}
+
+      {/* Status filter — New (not yet promoted) vs. already In Production. */}
+      <div className="cvws" style={{ display: 'flex', flexWrap: 'wrap', width: 'fit-content', maxWidth: '100%', marginBottom: 16 }}>
+        <div className={`cvw ${statusFilter === 'all' ? 'on' : ''}`} onClick={() => setStatusFilter('all')}>All ({brandFiltered.length})</div>
+        <div className={`cvw ${statusFilter === 'new' ? 'on' : ''}`} onClick={() => setStatusFilter('new')}>New ({newCount})</div>
+        <div className={`cvw ${statusFilter === 'production' ? 'on' : ''}`} onClick={() => setStatusFilter('production')} style={statusFilter === 'production' ? { color: '#ffbb44', background: '#ffbb4422' } : { color: '#ffbb44' }}>In Production ({prodCount})</div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <ComingSoon icon="◇" title="No ideas match this view" body={isCommand ? 'Fill rows in the Content Bucket, then flip one to Ready — it pops up here as a card.' : 'No ideas ready for your brand yet.'} />
+      ) : viewMode === 'table' ? (
+        <div className="sc" style={{ overflowX: 'auto', padding: 0 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+            <thead>
+              <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
+                {['Title', 'Brand', 'Campaign', 'Channel', 'Format', 'Publish', 'Status', ''].map((h) => (
+                  <th key={h} style={{ padding: '9px 10px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text3)', whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((i) => {
+                const b = brandById(i.brand_id);
+                const bc = b?.color || '#9494AA';
+                const cc = CHANNEL_COLOR[i.channel] || '#9494AA';
+                const camp = campaigns.find((c) => c.id === i.campaign_id);
+                const alreadyInProduction = promotedIdeaIds.has(i.id);
+                return (
+                  <tr key={i.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: '8px 10px', fontWeight: 600, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={i.title}>{i.title}</td>
+                    <td style={{ padding: '8px 10px' }}><span style={{ fontSize: 10, fontWeight: 600, color: bc, background: bc + '1c', padding: '2px 7px', borderRadius: 5 }}>{b?.name || '—'}</span></td>
+                    <td style={{ padding: '8px 10px', color: 'var(--text2)', whiteSpace: 'nowrap' }}>{camp ? camp.name : '—'}</td>
+                    <td style={{ padding: '8px 10px' }}>{i.channel ? <span style={{ fontSize: 10, fontWeight: 600, color: cc, background: cc + '1c', padding: '2px 7px', borderRadius: 5 }}>{i.channel}</span> : '—'}</td>
+                    <td style={{ padding: '8px 10px', color: 'var(--text3)', whiteSpace: 'nowrap' }}>{i.format || '—'}</td>
+                    <td style={{ padding: '8px 10px', color: 'var(--text3)', whiteSpace: 'nowrap' }}>{i.publish_date || '—'}</td>
+                    <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
+                      <Pill text={alreadyInProduction ? 'in production' : i.status} color={alreadyInProduction ? '#ffbb44' : (STATUS_COLOR[i.status] || '#9494AA')} />
+                    </td>
+                    <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'flex', gap: 5 }}>
+                        <button type="button" className="btn bg" style={{ fontSize: 11, padding: '3px 7px' }} onClick={() => setViewing(i)} title="View details">👁</button>
+                        {isCommand && !alreadyInProduction && (
+                          <form action={promoteAction}>
+                            <input type="hidden" name="idea_id" value={i.id} />
+                            <input type="hidden" name="brand_id" value={i.brand_id || ''} />
+                            <input type="hidden" name="campaign_id" value={i.campaign_id || ''} />
+                            <input type="hidden" name="title" value={i.title || ''} />
+                            <button className="btn bg" type="submit" disabled={promoting} style={{ fontSize: 11, padding: '3px 7px', color: '#64BC46' }}>Promote →</button>
+                          </form>
+                        )}
+                        {isCommand && (
+                          <form action={deleteAction}><input type="hidden" name="id" value={i.id} />
+                            <button className="btn bg" type="submit" disabled={deletingIdea} style={{ fontSize: 11, padding: '3px 7px', color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }}>🗑</button></form>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 14 }}>
-          {readyIdeas.map((i) => {
+          {filtered.map((i) => {
             const b = brandById(i.brand_id);
             const bc = b?.color || '#9494AA';
             const cc = CHANNEL_COLOR[i.channel] || '#9494AA';
