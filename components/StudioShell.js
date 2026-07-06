@@ -2858,6 +2858,7 @@ function LineUpView({ mcItems = [], mcThemes = [], brands = [], isCommand }) {
                     <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
                       <div style={{ display: 'flex', gap: 5 }}>
                         <button type="button" className="btn bg" style={{ fontSize: 11, padding: '3px 7px' }} onClick={() => setViewing(item)} title="Open full detail">👁</button>
+                        {isCommand && <button type="button" className="btn bg" style={{ fontSize: 11, padding: '3px 7px' }} onClick={() => setViewing(item)} title="Edit full detail">✎</button>}
                         {isCommand && (
                           isConfirming ? (
                             <span style={{ display: 'flex', gap: 5 }}>
