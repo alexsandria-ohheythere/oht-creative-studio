@@ -2442,6 +2442,10 @@ function LineUpView({ mcItems = [], mcThemes = [], brands = [], isCommand }) {
   const [errMsg, setErrMsg] = useState('');
   const [confirmDel, setConfirmDel] = useState(null);
   const newTitleRef = useRef(null);
+  const [viewing, setViewing] = useState(null); // row opened in the full-detail popup
+  const [linkUrl, setLinkUrl] = useState('');
+  const [linkName, setLinkName] = useState('');
+  const [attBusy, setAttBusy] = useState(false);
 
   // Per-column filters + sort — same pattern as Content Bucket.
   const [fTitle, setFTitle] = useState('');
@@ -2465,6 +2469,27 @@ function LineUpView({ mcItems = [], mcThemes = [], brands = [], isCommand }) {
 
   function patchLocal(id, patch) {
     setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+    setViewing((v) => (v && v.id === id ? { ...v, ...patch } : v));
+  }
+
+  async function saveAttachments(item, list) {
+    setAttBusy(true);
+    patchLocal(item.id, { attachments: list });
+    const fd = new FormData();
+    fd.set('id', item.id);
+    fd.set('attachments', JSON.stringify(list));
+    const res = await setItemAttachments(null, fd);
+    if (res?.error) setErrMsg(res.error);
+    setAttBusy(false);
+  }
+  function addLink(item) {
+    const url = linkUrl.trim();
+    if (!url) return;
+    saveAttachments(item, [...(item.attachments || []), { type: 'link', url, name: linkName.trim() }]);
+    setLinkUrl(''); setLinkName('');
+  }
+  function removeLink(item, idx) {
+    saveAttachments(item, (item.attachments || []).filter((_, i) => i !== idx));
   }
 
   async function updateField(item, field, value) {
@@ -2544,8 +2569,122 @@ function LineUpView({ mcItems = [], mcThemes = [], brands = [], isCommand }) {
   const cellFocus = (e) => { e.target.style.background = 'var(--bg3)'; e.target.style.borderColor = 'var(--border)'; };
   const cellBlur = (e) => { e.target.style.background = 'transparent'; e.target.style.borderColor = 'transparent'; };
 
+  // Full-detail popup — the table's inline cells cover the quick fields,
+  // but notes and attachment links have nowhere to live in a table row, so
+  // this is where all of a row's info actually comes together in one place.
+  let viewingPanel = null;
+  if (viewing) {
+    const c = viewing;
+    const b = brandById(c.brand_id);
+    const bc = b?.color || '#9494AA';
+    const theme = themeById(c.theme_id);
+    const st = mcItemStatus(c.status);
+    const pillarOptions = Array.isArray(theme?.pillars) ? theme.pillars : [];
+    viewingPanel = (
+      <Modal title={c.title || 'Untitled'} subtitle="Line Up item detail" onClose={() => setViewing(null)} maxWidth={640}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span className="ap-chip" style={{ background: bc + '22', color: bc }}>{b?.name || 'Unassigned'}</span>
+            <span className="ap-chip" style={{ background: st.color + '22', color: st.color }}>● {st.label}</span>
+          </div>
+
+          <CField label="Title">
+            <input style={cInp} defaultValue={c.title || ''} disabled={!isCommand}
+              onBlur={(e) => { if (e.target.value !== c.title) updateField(c, 'title', e.target.value); }} />
+          </CField>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <CField label="Brand">
+              {isCommand ? (
+                <select style={cInp} value={c.brand_id || ''} onChange={(e) => updateField(c, 'brand_id', e.target.value)}>
+                  {brands.map((bb) => <option key={bb.id} value={bb.id}>{bb.name}</option>)}
+                </select>
+              ) : <div style={{ fontSize: 13, color: 'var(--text2)' }}>{b?.name || '—'}</div>}
+            </CField>
+            <CField label="Theme">
+              <select style={cInp} value={c.theme_id || ''} disabled={!isCommand} onChange={(e) => updateField(c, 'theme_id', e.target.value)}>
+                <option value="">— none —</option>
+                {mcThemes.filter((t) => !c.brand_id || t.brand_id === c.brand_id).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </CField>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <CField label="Pillar">
+              {pillarOptions.length > 0 ? (
+                <select style={cInp} value={c.pillar || ''} disabled={!isCommand} onChange={(e) => updateField(c, 'pillar', e.target.value)}>
+                  <option value="">— none —</option>
+                  {pillarOptions.map((p, i) => <option key={i} value={p.name}>{p.name}</option>)}
+                </select>
+              ) : (
+                <input style={cInp} defaultValue={c.pillar || ''} disabled={!isCommand}
+                  onBlur={(e) => { if (e.target.value !== c.pillar) updateField(c, 'pillar', e.target.value); }} placeholder="—" />
+              )}
+            </CField>
+            <CField label="Kind">
+              <select style={cInp} value={c.kind || ''} disabled={!isCommand} onChange={(e) => updateField(c, 'kind', e.target.value)}>
+                <option value="">— none —</option>
+                {MC_ITEM_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+              </select>
+            </CField>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <CField label="Due Date">
+              <input type="date" style={cInp} defaultValue={c.due_date || ''} disabled={!isCommand}
+                onChange={(e) => updateField(c, 'due_date', e.target.value)} />
+            </CField>
+            <CField label="Status">
+              <select style={{ ...cInp, color: st.color, fontWeight: 700 }} value={c.status || 'queued'} disabled={!isCommand} onChange={(e) => updateField(c, 'status', e.target.value)}>
+                {Object.entries(MC_STATUS_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+              </select>
+            </CField>
+          </div>
+
+          <CField label="Notes">
+            <textarea style={cTa(90)} defaultValue={c.notes || ''} disabled={!isCommand} placeholder="Specs, dimensions, printer instructions, anything the producer needs to know."
+              onBlur={(e) => { if (e.target.value !== (c.notes || '')) updateField(c, 'notes', e.target.value); }} />
+          </CField>
+
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+            <div style={cLbl}>Links · finished files land in Assets</div>
+            {(c.attachments || []).length === 0 && (
+              <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 10 }}>No links yet. Paste a share link below — it will also show up in Assets.</div>
+            )}
+            {(c.attachments || []).length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+                {(c.attachments || []).map((a, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 10px' }}>
+                    <span style={{ fontSize: 14 }}>🔗</span>
+                    <a href={a.url} target="_blank" rel="noreferrer" style={{ flex: 1, fontSize: 12.5, color: 'var(--text)', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={a.url}>{a.name || a.url}</a>
+                    {isCommand && <button type="button" className="btn bg" disabled={attBusy} onClick={() => removeLink(c, i)} style={{ fontSize: 11, padding: '3px 8px', color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }}>Remove</button>}
+                  </div>
+                ))}
+              </div>
+            )}
+            {isCommand && (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                <div style={{ flex: '2 1 260px' }}>
+                  <input style={cInp} value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} placeholder="https://drive.google.com/…" onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addLink(c); } }} />
+                </div>
+                <div style={{ flex: '1 1 160px' }}>
+                  <input style={cInp} value={linkName} onChange={(e) => setLinkName(e.target.value)} placeholder="Label (optional)" onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addLink(c); } }} />
+                </div>
+                <button type="button" className={`btn bl ${attBusy ? 'loading' : ''}`} disabled={attBusy || !linkUrl.trim()} onClick={() => addLink(c)}>＋ Add link</button>
+              </div>
+            )}
+          </div>
+
+          {errMsg && <div style={{ fontSize: 12, color: '#ff6464' }}>{errMsg}</div>}
+        </div>
+      </Modal>
+    );
+  }
+
   return (
     <>
+      {viewingPanel}
+
       <div className="ph">
         <div>
           <div className="pt">Line Up</div>
@@ -2717,16 +2856,19 @@ function LineUpView({ mcItems = [], mcThemes = [], brands = [], isCommand }) {
                       </select>
                     </td>
                     <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
-                      {isCommand && (
-                        isConfirming ? (
-                          <span style={{ display: 'flex', gap: 5 }}>
-                            <button type="button" className="btn bg" style={{ fontSize: 11, padding: '3px 7px', color: '#ff6464' }} onClick={() => removeRow(item.id)}>Confirm</button>
-                            <button type="button" className="btn bg" style={{ fontSize: 11, padding: '3px 7px' }} onClick={() => setConfirmDel(null)}>✕</button>
-                          </span>
-                        ) : (
-                          <button type="button" className="btn bg" style={{ fontSize: 11, padding: '3px 7px', color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }} onClick={() => setConfirmDel(item.id)}>🗑</button>
-                        )
-                      )}
+                      <div style={{ display: 'flex', gap: 5 }}>
+                        <button type="button" className="btn bg" style={{ fontSize: 11, padding: '3px 7px' }} onClick={() => setViewing(item)} title="Open full detail">👁</button>
+                        {isCommand && (
+                          isConfirming ? (
+                            <span style={{ display: 'flex', gap: 5 }}>
+                              <button type="button" className="btn bg" style={{ fontSize: 11, padding: '3px 7px', color: '#ff6464' }} onClick={() => removeRow(item.id)}>Confirm</button>
+                              <button type="button" className="btn bg" style={{ fontSize: 11, padding: '3px 7px' }} onClick={() => setConfirmDel(null)}>✕</button>
+                            </span>
+                          ) : (
+                            <button type="button" className="btn bg" style={{ fontSize: 11, padding: '3px 7px', color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }} onClick={() => setConfirmDel(item.id)}>🗑</button>
+                          )
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
