@@ -3094,6 +3094,12 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
   const [fReady, setFReady] = useState('all'); // all | ready | draft
   const [fFrom, setFFrom] = useState('');
   const [fTo, setFTo] = useState('');
+  const [sortKey, setSortKey] = useState(null); // title | brand | pillar | channel | format | publish_date | ready
+  const [sortDir, setSortDir] = useState('asc');
+  function toggleSort(key) {
+    if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortKey(key); setSortDir('asc'); }
+  }
 
   useEffect(() => { if (state?.ok) { setShowForm(false); setEditing(null); } }, [state?.ok]);
 
@@ -3151,11 +3157,26 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
     return true;
   });
 
+  // Sort — applied across the whole filtered set before it's split back
+  // into per-campaign groups, so ordering stays consistent everywhere.
+  let sortedIdeas = filteredIdeas;
+  if (sortKey) {
+    sortedIdeas = [...filteredIdeas].sort((a, b) => {
+      let av, bv;
+      if (sortKey === 'brand') { av = brandById(a.brand_id)?.name || ''; bv = brandById(b.brand_id)?.name || ''; }
+      else if (sortKey === 'ready') { av = a.ready ? 1 : 0; bv = b.ready ? 1 : 0; }
+      else { av = a[sortKey] || ''; bv = b[sortKey] || ''; }
+      if (av < bv) return sortDir === 'asc' ? -1 : 1;
+      if (av > bv) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }
+
   // Group ideas by campaign; ideas without a (valid) campaign fall into
   // a trailing "No campaign" table so nothing gets lost from view.
-  const groups = campaigns.map((c) => ({ campaign: c, rows: filteredIdeas.filter((i) => i.campaign_id === c.id) }));
+  const groups = campaigns.map((c) => ({ campaign: c, rows: sortedIdeas.filter((i) => i.campaign_id === c.id) }));
   const campIds = new Set(campaigns.map((c) => c.id));
-  const unassigned = filteredIdeas.filter((i) => !i.campaign_id || !campIds.has(i.campaign_id));
+  const unassigned = sortedIdeas.filter((i) => !i.campaign_id || !campIds.has(i.campaign_id));
   if (unassigned.length > 0 || campaigns.length === 0) {
     groups.push({ campaign: null, rows: unassigned });
   }
@@ -3419,8 +3440,21 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                     <thead>
                       <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
-                        {['Title', 'Brand', 'Pillar', 'Channel', 'Format', 'Publish', 'Ready', ''].map((h) => (
-                          <th key={h} style={{ padding: '8px 10px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text3)', whiteSpace: 'nowrap' }}>{h}</th>
+                        {[
+                          { key: 'title', label: 'Title' },
+                          { key: 'brand', label: 'Brand' },
+                          { key: 'pillar', label: 'Pillar' },
+                          { key: 'channel', label: 'Channel' },
+                          { key: 'format', label: 'Format' },
+                          { key: 'publish_date', label: 'Publish' },
+                          { key: 'ready', label: 'Ready' },
+                          { key: null, label: '' },
+                        ].map((h) => (
+                          <th key={h.label || 'actions'}
+                            onClick={h.key ? () => toggleSort(h.key) : undefined}
+                            style={{ padding: '8px 10px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: sortKey === h.key ? 'var(--text)' : 'var(--text3)', whiteSpace: 'nowrap', cursor: h.key ? 'pointer' : 'default', userSelect: 'none' }}>
+                            {h.label}{h.key && <span style={{ marginLeft: 4, opacity: sortKey === h.key ? 1 : 0.25 }}>{sortKey === h.key && sortDir === 'desc' ? '▼' : '▲'}</span>}
+                          </th>
                         ))}
                       </tr>
                     </thead>
