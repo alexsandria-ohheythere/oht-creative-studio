@@ -289,12 +289,13 @@ a { color:inherit; text-decoration:none; }
 .cday-hd, .cgrid { display:grid; grid-template-columns:repeat(7,1fr); }
 .cday-hd { border-bottom:1px solid var(--border); }
 .cdlbl { padding:10px; text-align:center; font-size:11px; font-weight:700; color:var(--text3); text-transform:uppercase; letter-spacing:.05em; }
-.cc { min-height:96px; border-right:1px solid var(--border); border-bottom:1px solid var(--border); padding:7px; }
+.cc { min-height:96px; max-height:150px; overflow-y:auto; border-right:1px solid var(--border); border-bottom:1px solid var(--border); padding:7px; }
 .cc.om { background:color-mix(in srgb, var(--bg) 50%, var(--bg2)); }
 .cc.today { background:color-mix(in srgb, var(--lime) 8%, var(--bg2)); }
 .ccn { font-size:12px; font-weight:600; color:var(--text2); margin-bottom:6px; }
 .cc.today .ccn { color:var(--lime); }
-.cev { font-size:10.5px; font-weight:600; padding:3px 6px; border-radius:5px; margin-bottom:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cev { font-size:10.5px; font-weight:600; padding:3px 6px; border-radius:5px; margin-bottom:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; transition:filter .1s; }
+.cev:hover { filter:brightness(1.25); }
 .cev.ei { background:color-mix(in srgb, var(--pink) 18%, transparent); color:var(--pink); }
 .cev.ee { background:color-mix(in srgb, var(--green) 18%, transparent); color:var(--green); }
 .cev.el { background:color-mix(in srgb, var(--blue) 22%, transparent); color:var(--blue); }
