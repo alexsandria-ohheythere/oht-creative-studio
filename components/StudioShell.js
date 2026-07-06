@@ -1,11 +1,15 @@
 'use client';
 
-import { useState, useEffect, useActionState } from 'react';
+import { useState, useEffect, useRef, useActionState } from 'react';
 import appConfig from '../config/app.json';
 import { saveBrand, archiveBrand, deleteBrand } from '../app/dashboard/brand-actions';
 import { saveCampaign, deleteCampaign } from '../app/dashboard/campaign-actions';
 import { saveAsset, deleteAsset } from '../app/dashboard/asset-actions';
-import { saveTemplate, deleteTemplate } from '../app/dashboard/theme-actions';
+import {
+  saveTheme, deleteTheme,
+  saveItem, setItemStatus, setItemAttachments, deleteItem,
+  saveMcAsset, deleteMcAsset,
+} from '../app/dashboard/mc-actions';
 import {
   saveIdea, deleteIdea, duplicateIdea, setIdeaReady, promoteIdeaToProduction,
   saveContent, setContentStatus, deleteContent, setContentAttachments,
@@ -25,7 +29,7 @@ function initials(name = '') {
   return name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 }
 
-export default function StudioShell({ profile, email, content, brands = [], campaigns = [], ideas = [], assets = [], templates = [], googleConnected = false }) {
+export default function StudioShell({ profile, email, content, brands = [], campaigns = [], ideas = [], assets = [], mcThemes = [], mcItems = [], mcAssets = [], googleConnected = false }) {
   const role = profile.role === 'command' ? 'command' : 'freelance';
   const visibleNav = NAV.filter((n) => n.roles.includes(role));
 
@@ -227,35 +231,19 @@ export default function StudioShell({ profile, email, content, brands = [], camp
             )}
 
             {parentId === 'mc' && subView === 'theme' && (
-              <ThemeCenter templates={templates} brands={brands} isCommand={isCommand} />
+              <ThemeCenter mcThemes={mcThemes} mcItems={mcItems} brands={brands} isCommand={isCommand} />
             )}
 
             {parentId === 'mc' && subView === 'content' && (
-              <IdeasView ideas={ideas} content={content} brands={brands} campaigns={campaigns} brandById={(id) => brands.find((b) => b.id === id) || null} isCommand={isCommand} />
-            )}
-
-            {parentId === 'mc' && subView === 'briefs' && (
-              <>
-                <div className="ph">
-                  <div>
-                    <div className="pt">Briefs</div>
-                    <div className="ps">Marketing Collaterals</div>
-                  </div>
-                </div>
-                <ComingSoon
-                  icon="◇"
-                  title="Briefs needs a quick decision"
-                  body="The standalone briefs table was retired when its fields (hook, caption, hashtags, mandatories, references) got folded directly into Ideas — so there's no separate 'brief' step left to manage there. Before building a Briefs screen here, it's worth deciding: should this tab (a) reuse Ideas the same way Content does, (b) become a dedicated brief/spec doc for physical collateral (posters, packaging, signage) that's genuinely different from a social idea, or (c) get removed from this nav group? Flag your call and this gets wired up next."
-                />
-              </>
+              <LineUpView mcItems={mcItems} mcThemes={mcThemes} brands={brands} isCommand={isCommand} />
             )}
 
             {parentId === 'mc' && subView === 'production' && (
-              <ProductionView content={content} ideas={ideas} brands={brands} campaigns={campaigns} brandById={(id) => brands.find((b) => b.id === id) || null} isCommand={isCommand} googleConnected={googleConnected} />
+              <AssemblyView mcItems={mcItems} mcThemes={mcThemes} brands={brands} isCommand={isCommand} />
             )}
 
             {parentId === 'mc' && subView === 'assets' && (
-              <AssetLibrary assets={assets} content={content} ideas={ideas} brands={brands} brandColor={brandColor} isCommand={isCommand} />
+              <McAssetLibrary mcAssets={mcAssets} mcItems={mcItems} mcThemes={mcThemes} brands={brands} brandColor={brandColor} isCommand={isCommand} />
             )}
 
             {parentId === 'publishing' && (
@@ -1754,100 +1742,209 @@ function ContentCenter({ content, ideas = [], brands = [], campaigns = [], asset
 }
 
 // =====================================================================
-// THEME — reusable collateral templates (public.brand_templates: id,
-// brand_id, name, kind, body). Command-only per RLS + nav config.
-// list ↔ form, grouped by brand, same visual language as Campaigns.
+// MARKETING COLLATERALS — independent from the social pipeline above.
+// THEME (mc_themes) works exactly like Campaigns: a brand-scoped
+// initiative with a goal, dates, status, and pillars. Line Up items
+// (mc_items) can be tagged to a theme, and roll up here the same way
+// content rolls up to a campaign.
 // =====================================================================
-const TEMPLATE_KINDS = ['Poster', 'Menu Board', 'Packaging', 'Table Tent', 'Flyer', 'Signage', 'Social Cover', 'Other'];
+const MC_THEME_STATUS = {
+  planning: { label: 'Planning', color: '#9494AA' },
+  active: { label: 'Active', color: '#64BC46' },
+  done: { label: 'Done', color: '#78b8e8' },
+};
+const mcThemeStatus = (s) => MC_THEME_STATUS[s] || MC_THEME_STATUS.planning;
 
-function ThemeCenter({ templates = [], brands = [], isCommand }) {
-  const [view, setView] = useState('list'); // 'list' | 'form'
+function ThemeCenter({ mcThemes = [], mcItems = [], brands = [], isCommand }) {
+  const [view, setView] = useState('list'); // 'list' | 'detail' | 'form'
+  const [openId, setOpenId] = useState(null);
   const [editing, setEditing] = useState(null);
-  const [confirmDel, setConfirmDel] = useState(null); // id currently confirming delete
-  const [brandFilter, setBrandFilter] = useState('all');
-
-  const [delState, deleteAction, deleting] = useActionState(deleteTemplate, {});
-  useEffect(() => {
-    if (delState && delState.deleted) setConfirmDel(null);
-  }, [delState]);
+  const [confirmDel, setConfirmDel] = useState(false);
 
   const brandById = (id) => brands.find((b) => b.id === id) || null;
+  const open = mcThemes.find((t) => t.id === openId);
 
+  const [delState, deleteAction, deleting] = useActionState(deleteTheme, {});
+  useEffect(() => {
+    if (delState && delState.deleted) { setConfirmDel(false); setView('list'); setOpenId(null); setEditing(null); }
+  }, [delState]);
+
+  const rollup = (themeId) => {
+    const items = mcItems.filter((i) => i.theme_id === themeId);
+    return {
+      items,
+      count: items.length,
+      inAssembly: items.filter((i) => i.status === 'in_assembly').length,
+      review: items.filter((i) => i.status === 'review').length,
+      approved: items.filter((i) => i.status === 'approved').length,
+    };
+  };
+
+  function openDetail(id) { setOpenId(id); setView('detail'); setConfirmDel(false); }
   function openNew() { setEditing(null); setView('form'); }
   function openEdit(t) { setEditing(t); setView('form'); }
-  function backToList() { setView('list'); setEditing(null); }
+  function backToList() { setView('list'); setOpenId(null); setEditing(null); }
 
   if (view === 'form') {
-    return <ThemeForm template={editing} brands={brands} onDone={backToList} onCancel={backToList} />;
+    return <ThemeForm theme={editing} brands={brands} onDone={backToList} onCancel={backToList} />;
   }
 
-  const filtered = brandFilter === 'all' ? templates : templates.filter((t) => t.brand_id === brandFilter);
+  if (view === 'detail' && open) {
+    const brand = brandById(open.brand_id);
+    const brandName = brand?.name || 'Unassigned brand';
+    const bc = brand?.color || '#9494AA';
+    const st = mcThemeStatus(open.status);
+    const r = rollup(open.id);
+    const field = (label, value) => (
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text3)', marginBottom: 3 }}>{label}</div>
+        <div style={{ fontSize: 13, color: value ? 'var(--text)' : 'var(--text3)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{value || 'Not set'}</div>
+      </div>
+    );
+    return (
+      <>
+        <div className="ph">
+          <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+            <div style={{ width: 10, height: 44, borderRadius: 5, flex: '0 0 10px', background: bc }} />
+            <div>
+              <div className="pt">{open.name}</div>
+              <div className="ps">
+                <span style={{ color: bc, fontWeight: 600 }}>{brandName}</span>
+                {'  ·  '}<span style={{ color: st.color }}>{st.label}</span>
+                {'  ·  '}{fmtRange(open.starts_on, open.ends_on)}
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {isCommand && <button type="button" className="btn bg" onClick={() => openEdit(open)}>✎ Edit</button>}
+            {isCommand && !confirmDel && (
+              <button type="button" className="btn bg" style={{ color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }} onClick={() => setConfirmDel(true)}>🗑 Delete</button>
+            )}
+            {isCommand && confirmDel && (
+              <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                <span style={{ fontSize: 12, color: '#ff6464' }}>Delete theme?</span>
+                <form action={deleteAction} style={{ display: 'inline' }}>
+                  <input type="hidden" name="id" value={open.id} />
+                  <button className="btn" type="submit" disabled={deleting} style={{ background: '#ff6464', color: '#111', borderColor: '#ff6464' }}>{deleting ? 'Deleting…' : 'Yes, delete'}</button>
+                </form>
+                <button type="button" className="btn bg" onClick={() => setConfirmDel(false)}>Cancel</button>
+              </span>
+            )}
+            <button type="button" className="btn bg" onClick={backToList}>← All themes</button>
+          </div>
+        </div>
+
+        {delState?.error && <div className="ap-note" style={{ borderColor: 'rgba(255,100,100,.35)', color: '#ff6464' }}>{delState.error}</div>}
+
+        <div className="sgrid" style={{ marginBottom: 18 }}>
+          <div className="sc"><div className="slbl">Line Up items</div><div className="sval" style={{ color: bc }}>{r.count}</div><div className="sdlt muted">total</div></div>
+          <div className="sc"><div className="slbl">In Assembly</div><div className="sval" style={{ color: '#ffbb44' }}>{r.inAssembly}</div><div className="sdlt muted">being made</div></div>
+          <div className="sc"><div className="slbl">In Review</div><div className="sval" style={{ color: '#78b8e8' }}>{r.review}</div><div className="sdlt muted">awaiting sign-off</div></div>
+          <div className="sc"><div className="slbl">Approved</div><div className="sval" style={{ color: 'var(--green)' }}>{r.approved}</div><div className="sdlt muted">ready</div></div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.4fr)', gap: 18 }}>
+          <div className="sc" style={{ padding: 18 }}>
+            <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 14, marginBottom: 14 }}>Details</div>
+            {field('Goal', open.goal)}
+            {field('Brand', brandName)}
+            {field('Status', st.label)}
+            {field('Timeline', fmtRange(open.starts_on, open.ends_on))}
+
+            <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text3)', marginBottom: 8, marginTop: 4 }}>Pillars</div>
+            {(!open.pillars || open.pillars.length === 0) ? (
+              <div style={{ fontSize: 12, color: 'var(--text3)', lineHeight: 1.6 }}>
+                No pillars yet. Edit this theme to add pillars — each one becomes pickable when you add rows in Line Up.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {open.pillars.map((p, idx) => (
+                  <div key={idx} style={{ padding: '10px 12px', borderRadius: 8, background: 'var(--bg3)', borderLeft: `3px solid ${bc}` }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: p.description ? 4 : 0 }}>{p.name}</div>
+                    {p.description && <div style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.5 }}>{p.description}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="sc" style={{ padding: 18 }}>
+            <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 14, marginBottom: 14 }}>
+              Line Up items in this theme <span style={{ color: 'var(--text3)', fontWeight: 400 }}>· {r.count}</span>
+            </div>
+            {r.count === 0 && (
+              <div style={{ fontSize: 12, color: 'var(--text3)', lineHeight: 1.6 }}>
+                No items linked yet. In Line Up, set a row&apos;s Theme to <b style={{ color: 'var(--text2)' }}>{open.name}</b> and it will roll up here.
+              </div>
+            )}
+            {r.items.map((i) => (
+              <div key={i.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ width: 6, height: 6, borderRadius: '50%', background: bc, flex: '0 0 6px' }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{i.title}</div>
+                  {i.kind && <div style={{ fontSize: 11, color: 'var(--text3)' }}>{i.kind}</div>}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text3)', textAlign: 'right', flex: '0 0 auto' }}>{i.status}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  // ----- LIST MODE -----
+  const sorted = [...mcThemes].sort((a, b) => {
+    const order = { active: 0, planning: 1, done: 2 };
+    return (order[a.status] ?? 9) - (order[b.status] ?? 9);
+  });
 
   return (
     <>
       <div className="ph">
         <div>
           <div className="pt">Theme</div>
-          <div className="ps">Reusable templates for posters, packaging, signage & other collateral</div>
+          <div className="ps">Marketing Collateral initiatives — like Campaigns, but for physical materials</div>
         </div>
-        {isCommand && <button type="button" className="btn bl" onClick={openNew}>＋ New Template</button>}
+        {isCommand && <button type="button" className="btn bl" onClick={openNew}>＋ New Theme</button>}
       </div>
 
-      {brands.length > 0 && (
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-          <div className={`cvw ${brandFilter === 'all' ? 'on' : ''}`} onClick={() => setBrandFilter('all')}>All brands</div>
-          {brands.map((b) => (
-            <div key={b.id} className={`cvw ${brandFilter === b.id ? 'on' : ''}`} style={brandFilter === b.id ? { color: b.color, background: b.color + '22' } : { color: b.color }} onClick={() => setBrandFilter(b.id)}>{b.name}</div>
-          ))}
-        </div>
-      )}
-
-      {delState?.error && (
-        <div className="ap-note" style={{ borderColor: 'rgba(255,100,100,.35)', color: '#ff6464', marginBottom: 12 }}>
-          {delState.error}
-        </div>
-      )}
-
-      {filtered.length === 0 ? (
+      {mcThemes.length === 0 ? (
         <ComingSoon
           icon="◇"
-          title="No templates yet"
+          title="No themes yet"
           body={isCommand
-            ? 'Add a template for each recurring piece of collateral — a poster layout, a menu board format, packaging artwork specs — so Production always starts from the right base.'
-            : 'No templates have been added yet.'}
+            ? 'Create your first theme to group collateral with a goal, dates and a brand — e.g. a seasonal collection or a store refresh. Line Up items tagged to it roll up here.'
+            : 'No themes have been created for your brand yet.'}
         />
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 16 }}>
-          {filtered.map((t) => {
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 16 }}>
+          {sorted.map((t) => {
             const brand = brandById(t.brand_id);
+            const brandName = brand?.name || 'Unassigned';
             const bc = brand?.color || '#9494AA';
-            const isConfirming = confirmDel === t.id;
+            const st = mcThemeStatus(t.status);
+            const r = rollup(t.id);
             return (
-              <div key={t.id} className="sc" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              <div key={t.id} className="sc" style={{ padding: 0, cursor: 'pointer', overflow: 'hidden', display: 'flex', flexDirection: 'column' }} onClick={() => openDetail(t.id)}>
                 <div style={{ height: 5, background: bc }} />
                 <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10, flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
                     <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 15, lineHeight: 1.25 }}>{t.name}</div>
-                    {t.kind && <Pill text={t.kind} color={bc} />}
+                    <span style={{ flex: '0 0 auto', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: st.color, background: st.color + '22', padding: '3px 8px', borderRadius: 20 }}>{st.label}</span>
                   </div>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: bc, background: bc + '1c', padding: '2px 8px', borderRadius: 5, width: 'fit-content' }}>{brand?.name || 'Unassigned'}</span>
-                  {t.body && (
-                    <div style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{t.body}</div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: bc, background: bc + '1c', padding: '2px 8px', borderRadius: 5 }}>{brandName}</span>
+                    <span style={{ fontSize: 11, color: 'var(--text3)' }}>{fmtRange(t.starts_on, t.ends_on)}</span>
+                  </div>
+                  {t.goal && (
+                    <div style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{t.goal}</div>
                   )}
-                  {isCommand && (
-                    <div style={{ display: 'flex', gap: 8, marginTop: 'auto', paddingTop: 8, borderTop: '1px solid var(--border)' }}>
-                      <button type="button" className="btn bg" style={{ flex: 1 }} onClick={() => openEdit(t)}>✎ Edit</button>
-                      {!isConfirming ? (
-                        <button type="button" className="btn bg" style={{ color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }} onClick={() => setConfirmDel(t.id)}>🗑</button>
-                      ) : (
-                        <form action={deleteAction} style={{ display: 'flex', gap: 6 }}>
-                          <input type="hidden" name="id" value={t.id} />
-                          <button className="btn" type="submit" disabled={deleting} style={{ background: '#ff6464', color: '#111', borderColor: '#ff6464' }}>{deleting ? '…' : 'Confirm'}</button>
-                          <button type="button" className="btn bg" onClick={() => setConfirmDel(null)}>✕</button>
-                        </form>
-                      )}
-                    </div>
-                  )}
+                  <div style={{ display: 'flex', gap: 14, marginTop: 'auto', paddingTop: 8, borderTop: '1px solid var(--border)' }}>
+                    <div><div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text3)' }}>Items</div><div style={{ fontSize: 14, fontWeight: 700 }}>{r.count}</div></div>
+                    <div><div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text3)' }}>Assembly</div><div style={{ fontSize: 14, fontWeight: 700 }}>{r.inAssembly}</div></div>
+                    <div><div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text3)' }}>Approved</div><div style={{ fontSize: 14, fontWeight: 700, color: 'var(--green)' }}>{r.approved}</div></div>
+                  </div>
                 </div>
               </div>
             );
@@ -1858,34 +1955,37 @@ function ThemeCenter({ templates = [], brands = [], isCommand }) {
   );
 }
 
-function ThemeForm({ template, brands = [], onDone, onCancel }) {
-  const [state, formAction, pending] = useActionState(saveTemplate, {});
-  const [brandId, setBrandId] = useState(template?.brand_id || (brands[0]?.id || ''));
-  const [kind, setKind] = useState(template?.kind || TEMPLATE_KINDS[0]);
+function ThemeForm({ theme, brands = [], onDone, onCancel }) {
+  const [state, formAction, pending] = useActionState(saveTheme, {});
+  const [status, setStatus] = useState(theme?.status || 'planning');
+  const [brandId, setBrandId] = useState(theme?.brand_id || (brands[0]?.id || ''));
+  const [pillars, setPillars] = useState(
+    Array.isArray(theme?.pillars) && theme.pillars.length
+      ? theme.pillars.map((p) => ({ name: p.name || '', description: p.description || '' }))
+      : []
+  );
 
-  useEffect(() => {
-    if (state?.ok) onDone();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state]);
+  useEffect(() => { if (state?.ok) onDone(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [state]);
+
+  function addPillar() { setPillars((p) => [...p, { name: '', description: '' }]); }
+  function updatePillar(idx, key, val) { setPillars((p) => p.map((x, i) => (i === idx ? { ...x, [key]: val } : x))); }
+  function removePillar(idx) { setPillars((p) => p.filter((_, i) => i !== idx)); }
 
   return (
     <>
       <div className="ph">
         <div>
-          <div className="pt">{template ? 'Edit Template' : 'New Template'}</div>
+          <div className="pt">{theme ? 'Edit Theme' : 'New Theme'}</div>
           <div className="ps">Theme · Marketing Collaterals</div>
         </div>
         <button type="button" className="btn bg" onClick={onCancel}>← Back</button>
       </div>
 
       <form action={formAction} className="sc" style={{ padding: 20, maxWidth: 640 }}>
-        {template && <input type="hidden" name="id" value={template.id} />}
+        {theme && <input type="hidden" name="id" value={theme.id} />}
+        <input type="hidden" name="pillars" value={JSON.stringify(pillars.filter((p) => p.name.trim()))} />
 
-        {state?.error && (
-          <div className="ap-note" style={{ borderColor: 'rgba(255,100,100,.35)', color: '#ff6464', marginBottom: 14 }}>
-            {state.error}
-          </div>
-        )}
+        {state?.error && <div className="ap-note" style={{ borderColor: 'rgba(255,100,100,.35)', color: '#ff6464', marginBottom: 14 }}>{state.error}</div>}
 
         <CField label="Brand">
           <select name="brand_id" value={brandId} onChange={(e) => setBrandId(e.target.value)} style={cInp} required>
@@ -1894,22 +1994,40 @@ function ThemeForm({ template, brands = [], onDone, onCancel }) {
           </select>
         </CField>
 
-        <CField label="Template name">
-          <input type="text" name="name" defaultValue={template?.name || ''} style={cInp} placeholder="e.g. A2 In-store Poster" required />
+        <CField label="Theme name">
+          <input type="text" name="name" defaultValue={theme?.name || ''} style={cInp} placeholder="e.g. Holiday Collection 2026" required />
         </CField>
 
-        <CField label="Kind">
-          <select name="kind" value={kind} onChange={(e) => setKind(e.target.value)} style={cInp}>
-            {TEMPLATE_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
-          </select>
+        <CField label="Goal">
+          <textarea name="goal" defaultValue={theme?.goal || ''} style={cTa(80)} placeholder="What is this collateral push trying to achieve?" />
         </CField>
 
-        <CField label="Template details">
-          <textarea name="body" defaultValue={template?.body || ''} style={cTa(160)} placeholder="Dimensions, layout notes, copy blocks, file links, print specs…" />
-        </CField>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+          <CField label="Status">
+            <select name="status" value={status} onChange={(e) => setStatus(e.target.value)} style={cInp}>
+              <option value="planning">Planning</option>
+              <option value="active">Active</option>
+              <option value="done">Done</option>
+            </select>
+          </CField>
+          <CField label="Starts"><input type="date" name="starts_on" defaultValue={theme?.starts_on || ''} style={cInp} /></CField>
+          <CField label="Ends"><input type="date" name="ends_on" defaultValue={theme?.ends_on || ''} style={cInp} /></CField>
+        </div>
+
+        <div style={{ marginBottom: 14 }}>
+          <label style={cLbl}>Pillars <span style={{ textTransform: 'none', fontWeight: 400 }}>(optional — become pickable on Line Up rows)</span></label>
+          {pillars.map((p, idx) => (
+            <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+              <input style={{ ...cInp, flex: '0 0 40%' }} value={p.name} onChange={(e) => updatePillar(idx, 'name', e.target.value)} placeholder="Pillar name" />
+              <input style={{ ...cInp, flex: 1 }} value={p.description} onChange={(e) => updatePillar(idx, 'description', e.target.value)} placeholder="Description (optional)" />
+              <button type="button" className="btn bg" onClick={() => removePillar(idx)} style={{ flex: '0 0 auto', color: '#ff6464' }}>✕</button>
+            </div>
+          ))}
+          <button type="button" className="btn bg" onClick={addPillar} style={{ fontSize: 12 }}>＋ Add pillar</button>
+        </div>
 
         <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
-          <button className="btn bl" type="submit" disabled={pending}>{pending ? 'Saving…' : 'Save Template'}</button>
+          <button className="btn bl" type="submit" disabled={pending}>{pending ? 'Saving…' : 'Save Theme'}</button>
           <button type="button" className="btn bg" onClick={onCancel}>Cancel</button>
         </div>
       </form>
@@ -2275,7 +2393,670 @@ function AssetLibrary({ assets = [], content = [], ideas = [], brands = [], bran
   );
 }
 
-// ---------------------------------------------------------- CONTENT BUCKET
+// =====================================================================
+// LINE UP — Notion-style master table for public.mc_items. Every cell is
+// directly editable in place (no modal), autosaving on blur/change via
+// saveItem() called straight as a function — Next.js server actions can
+// be invoked directly from client code, not only through <form action>,
+// and revalidatePath() on the server refreshes the props naturally.
+// Assembly (the kanban board) reads the exact same rows by status.
+// =====================================================================
+const MC_ITEM_KINDS = ['Poster', 'Menu Board', 'Packaging', 'Table Tent', 'Flyer', 'Signage', 'Sticker', 'Other'];
+const MC_STATUS_META = {
+  queued: { label: 'Queued', color: '#9494AA' },
+  in_assembly: { label: 'In Assembly', color: '#ffbb44' },
+  review: { label: 'In Review', color: '#78b8e8' },
+  approved: { label: 'Approved', color: '#64BC46' },
+};
+const mcItemStatus = (s) => MC_STATUS_META[s] || MC_STATUS_META.queued;
+
+function LineUpView({ mcItems = [], mcThemes = [], brands = [], isCommand }) {
+  const [rows, setRows] = useState(mcItems);
+  const [brandFilter, setBrandFilter] = useState(brands.length === 1 ? brands[0].id : 'all');
+  const [savingId, setSavingId] = useState(null);
+  const [errMsg, setErrMsg] = useState('');
+  const [confirmDel, setConfirmDel] = useState(null);
+  const newTitleRef = useRef(null);
+
+  useEffect(() => { setRows(mcItems); }, [mcItems]);
+
+  const brandById = (id) => brands.find((b) => b.id === id) || null;
+  const themeById = (id) => mcThemes.find((t) => t.id === id) || null;
+
+  function patchLocal(id, patch) {
+    setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  }
+
+  async function updateField(item, field, value) {
+    patchLocal(item.id, { [field]: value });
+    setSavingId(item.id);
+    setErrMsg('');
+    try {
+      const fd = new FormData();
+      fd.set('id', item.id);
+      fd.set(field, value ?? '');
+      const res = await saveItem(null, fd);
+      if (res?.error) setErrMsg(res.error);
+    } catch (e) {
+      setErrMsg(e.message || 'Could not save.');
+    } finally {
+      setSavingId((s) => (s === item.id ? null : s));
+    }
+  }
+
+  async function addRow() {
+    const brand_id = brandFilter !== 'all' ? brandFilter : (brands[0]?.id || '');
+    if (!brand_id) { setErrMsg('Add a brand first.'); return; }
+    const fd = new FormData();
+    fd.set('brand_id', brand_id);
+    fd.set('title', 'Untitled');
+    const res = await saveItem(null, fd);
+    if (res?.error) { setErrMsg(res.error); return; }
+    if (res?.item) {
+      setRows((rs) => [res.item, ...rs]);
+      requestAnimationFrame(() => newTitleRef.current?.focus());
+    }
+  }
+
+  async function removeRow(id) {
+    setRows((rs) => rs.filter((r) => r.id !== id));
+    setConfirmDel(null);
+    const fd = new FormData();
+    fd.set('id', id);
+    const res = await deleteItem(null, fd);
+    if (res?.error) setErrMsg(res.error);
+  }
+
+  const filtered = brandFilter === 'all' ? rows : rows.filter((r) => r.brand_id === brandFilter);
+  const sorted = [...filtered].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+  const cellInp = { width: '100%', background: 'transparent', border: '1px solid transparent', borderRadius: 6, padding: '6px 7px', color: 'var(--text)', fontSize: 12.5, fontFamily: "'Inter',sans-serif" };
+  const cellFocus = (e) => { e.target.style.background = 'var(--bg3)'; e.target.style.borderColor = 'var(--border)'; };
+  const cellBlur = (e) => { e.target.style.background = 'transparent'; e.target.style.borderColor = 'transparent'; };
+
+  return (
+    <>
+      <div className="ph">
+        <div>
+          <div className="pt">Line Up</div>
+          <div className="ps">Everything that needs producing for Marketing Collaterals — click any cell to edit</div>
+        </div>
+        {isCommand && <button type="button" className="btn bl" onClick={addRow}>＋ Add row</button>}
+      </div>
+
+      {brands.length > 1 && (
+        <div className="cvws" style={{ display: 'flex', flexWrap: 'wrap', width: 'fit-content', maxWidth: '100%', marginBottom: 14 }}>
+          <div className={`cvw ${brandFilter === 'all' ? 'on' : ''}`} onClick={() => setBrandFilter('all')}>All brands</div>
+          {brands.map((b) => (
+            <div key={b.id} className={`cvw ${brandFilter === b.id ? 'on' : ''}`} onClick={() => setBrandFilter(b.id)} style={brandFilter === b.id ? { color: b.color, background: b.color + '22' } : { color: b.color }}>{b.name}</div>
+          ))}
+        </div>
+      )}
+
+      {errMsg && <div className="ap-note" style={{ borderColor: 'rgba(255,100,100,.35)', color: '#ff6464', marginBottom: 12 }}>{errMsg}</div>}
+
+      {sorted.length === 0 ? (
+        <ComingSoon
+          icon="◇"
+          title="Nothing in the Line Up yet"
+          body={isCommand ? 'Add a row for every piece of collateral you need to produce — a poster, packaging, signage — then move it through Assembly as it gets made.' : 'No items in the Line Up for your brand yet.'}
+        />
+      ) : (
+        <div className="sc" style={{ overflowX: 'auto', padding: 0 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+            <thead>
+              <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
+                {['Title', 'Brand', 'Theme', 'Pillar', 'Kind', 'Due', 'Status', ''].map((h) => (
+                  <th key={h} style={{ padding: '9px 10px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text3)', whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((item, idx) => {
+                const theme = themeById(item.theme_id);
+                const pillarOptions = Array.isArray(theme?.pillars) ? theme.pillars : [];
+                const st = mcItemStatus(item.status);
+                const isConfirming = confirmDel === item.id;
+                const busy = savingId === item.id;
+                return (
+                  <tr key={item.id} style={{ borderBottom: '1px solid var(--border)', opacity: busy ? 0.7 : 1 }}>
+                    <td style={{ minWidth: 180 }}>
+                      <input
+                        ref={idx === 0 ? newTitleRef : null}
+                        style={cellInp}
+                        defaultValue={item.title || ''}
+                        disabled={!isCommand}
+                        onFocus={cellFocus}
+                        onBlur={(e) => { cellBlur(e); if (e.target.value !== item.title) updateField(item, 'title', e.target.value); }}
+                        placeholder="Untitled"
+                      />
+                    </td>
+                    <td style={{ minWidth: 130 }}>
+                      {isCommand ? (
+                        <select style={cellInp} value={item.brand_id || ''} onFocus={cellFocus} onBlur={cellBlur} onChange={(e) => updateField(item, 'brand_id', e.target.value)}>
+                          {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                        </select>
+                      ) : (
+                        <span style={{ padding: '6px 7px', display: 'block' }}>{brandById(item.brand_id)?.name || '—'}</span>
+                      )}
+                    </td>
+                    <td style={{ minWidth: 160 }}>
+                      <select style={cellInp} value={item.theme_id || ''} disabled={!isCommand} onFocus={cellFocus} onBlur={cellBlur} onChange={(e) => updateField(item, 'theme_id', e.target.value)}>
+                        <option value="">— none —</option>
+                        {mcThemes.filter((t) => !item.brand_id || t.brand_id === item.brand_id).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                      </select>
+                    </td>
+                    <td style={{ minWidth: 130 }}>
+                      {pillarOptions.length > 0 ? (
+                        <select style={cellInp} value={item.pillar || ''} disabled={!isCommand} onFocus={cellFocus} onBlur={cellBlur} onChange={(e) => updateField(item, 'pillar', e.target.value)}>
+                          <option value="">— none —</option>
+                          {pillarOptions.map((p, i) => <option key={i} value={p.name}>{p.name}</option>)}
+                        </select>
+                      ) : (
+                        <input style={cellInp} defaultValue={item.pillar || ''} disabled={!isCommand} onFocus={cellFocus} onBlur={(e) => { cellBlur(e); if (e.target.value !== item.pillar) updateField(item, 'pillar', e.target.value); }} placeholder="—" />
+                      )}
+                    </td>
+                    <td style={{ minWidth: 130 }}>
+                      <select style={cellInp} value={item.kind || ''} disabled={!isCommand} onFocus={cellFocus} onBlur={cellBlur} onChange={(e) => updateField(item, 'kind', e.target.value)}>
+                        <option value="">— none —</option>
+                        {MC_ITEM_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+                      </select>
+                    </td>
+                    <td style={{ minWidth: 130 }}>
+                      <input type="date" style={cellInp} defaultValue={item.due_date || ''} disabled={!isCommand} onFocus={cellFocus} onBlur={(e) => { cellBlur(e); if (e.target.value !== item.due_date) updateField(item, 'due_date', e.target.value); }} />
+                    </td>
+                    <td style={{ minWidth: 130 }}>
+                      <select
+                        style={{ ...cellInp, color: st.color, fontWeight: 700, background: st.color + '18' }}
+                        value={item.status || 'queued'}
+                        disabled={!isCommand}
+                        onChange={(e) => updateField(item, 'status', e.target.value)}
+                      >
+                        {Object.entries(MC_STATUS_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                      </select>
+                    </td>
+                    <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
+                      {isCommand && (
+                        isConfirming ? (
+                          <span style={{ display: 'flex', gap: 5 }}>
+                            <button type="button" className="btn bg" style={{ fontSize: 11, padding: '3px 7px', color: '#ff6464' }} onClick={() => removeRow(item.id)}>Confirm</button>
+                            <button type="button" className="btn bg" style={{ fontSize: 11, padding: '3px 7px' }} onClick={() => setConfirmDel(null)}>✕</button>
+                          </span>
+                        ) : (
+                          <button type="button" className="btn bg" style={{ fontSize: 11, padding: '3px 7px', color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }} onClick={() => setConfirmDel(item.id)}>🗑</button>
+                        )
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}
+
+// =====================================================================
+// ASSEMBLY — kanban board over the same public.mc_items rows as Line Up.
+// Mirrors ProductionView's drag/drop + advance-button pattern exactly,
+// simplified: no "virtual idea card" step since Line Up rows ARE the
+// queue (there's no separate promotion step for collaterals).
+// =====================================================================
+function AssemblyView({ mcItems = [], mcThemes = [], brands = [], isCommand }) {
+  const [viewing, setViewing] = useState(null);
+  const [dragId, setDragId] = useState(null);
+  const [overCol, setOverCol] = useState(null);
+  const [busyId, setBusyId] = useState(null);
+  const [errMsg, setErrMsg] = useState('');
+  const [items, setItems] = useState(mcItems);
+  const [linkUrl, setLinkUrl] = useState('');
+  const [linkName, setLinkName] = useState('');
+  const [attBusy, setAttBusy] = useState(false);
+
+  useEffect(() => { setItems(mcItems); }, [mcItems]);
+
+  const brandById = (id) => brands.find((b) => b.id === id) || null;
+  const themeById = (id) => mcThemes.find((t) => t.id === id) || null;
+
+  const COLS = [
+    { id: 'queued', label: 'Queued', color: '#9494AA' },
+    { id: 'in_assembly', label: 'In Assembly', color: '#ffbb44' },
+    { id: 'review', label: 'In Review', color: '#78b8e8' },
+    { id: 'approved', label: 'Approved', color: '#64BC46' },
+  ];
+  const nextOf = { queued: 'in_assembly', in_assembly: 'review', review: 'approved' };
+  const prevOf = { in_assembly: 'queued', review: 'in_assembly', approved: 'review' };
+  const colById = (id) => COLS.find((c) => c.id === id);
+
+  async function moveTo(id, status) {
+    setItems((rs) => rs.map((r) => (r.id === id ? { ...r, status } : r)));
+    setViewing((v) => (v && v.id === id ? { ...v, status } : v));
+    setBusyId(id);
+    const fd = new FormData();
+    fd.set('id', id);
+    fd.set('status', status);
+    const res = await setItemStatus(null, fd);
+    if (res?.error) setErrMsg(res.error);
+    setBusyId(null);
+  }
+
+  async function saveAttachments(item, list) {
+    setAttBusy(true);
+    setItems((rs) => rs.map((r) => (r.id === item.id ? { ...r, attachments: list } : r)));
+    setViewing((v) => (v && v.id === item.id ? { ...v, attachments: list } : v));
+    const fd = new FormData();
+    fd.set('id', item.id);
+    fd.set('attachments', JSON.stringify(list));
+    const res = await setItemAttachments(null, fd);
+    if (res?.error) setErrMsg(res.error);
+    setAttBusy(false);
+  }
+  function addLink(item) {
+    const url = linkUrl.trim();
+    if (!url) return;
+    saveAttachments(item, [...(item.attachments || []), { type: 'link', url, name: linkName.trim() }]);
+    setLinkUrl(''); setLinkName('');
+  }
+  function removeLink(item, idx) {
+    saveAttachments(item, (item.attachments || []).filter((_, i) => i !== idx));
+  }
+
+  function onDrop(colId) {
+    if (dragId) {
+      const item = items.find((c) => c.id === dragId);
+      if (item && item.status !== colId) moveTo(dragId, colId);
+    }
+    setDragId(null);
+    setOverCol(null);
+  }
+
+  if (viewing) {
+    const c = viewing;
+    const b = brandById(c.brand_id);
+    const bc = b?.color || '#9494AA';
+    const st = colById(c.status) || COLS[0];
+    const theme = themeById(c.theme_id);
+    return (
+      <>
+        <div className="ph">
+          <div><div className="pt">{c.title || 'Untitled'}</div><div className="ps">Assembly detail</div></div>
+          <button type="button" className="btn bg" onClick={() => setViewing(null)}>← Back to board</button>
+        </div>
+        <div className="sc" style={{ padding: 22, maxWidth: 680, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span className="ap-chip" style={{ background: bc + '22', color: bc }}>{b?.name || 'Unassigned'}</span>
+            <span className="ap-chip" style={{ background: st.color + '22', color: st.color }}>● {st.label}</span>
+            {c.kind && <span className="ap-chip" style={{ background: 'var(--bg3)', color: 'var(--text2)' }}>{c.kind}</span>}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div><div style={cLbl}>Theme</div><div style={{ fontSize: 13, color: 'var(--text2)' }}>{theme ? theme.name : '—'}</div></div>
+            <div><div style={cLbl}>Due</div><div style={{ fontSize: 13, color: 'var(--text2)' }}>{c.due_date || '—'}</div></div>
+          </div>
+          <div>
+            <div style={cLbl}>Notes</div>
+            <div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{c.notes || <span style={{ color: 'var(--text3)' }}>No notes yet.</span>}</div>
+          </div>
+
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+            <div style={cLbl}>Links · finished files land in Assets</div>
+            {(c.attachments || []).length === 0 && (
+              <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 10 }}>No links yet. Paste a share link below — it will also show up in Assets.</div>
+            )}
+            {(c.attachments || []).length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+                {(c.attachments || []).map((a, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 10px' }}>
+                    <span style={{ fontSize: 14 }}>🔗</span>
+                    <a href={a.url} target="_blank" rel="noreferrer" style={{ flex: 1, fontSize: 12.5, color: 'var(--text)', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={a.url}>{a.name || a.url}</a>
+                    {isCommand && <button type="button" className="btn bg" disabled={attBusy} onClick={() => removeLink(c, i)} style={{ fontSize: 11, padding: '3px 8px', color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }}>Remove</button>}
+                  </div>
+                ))}
+              </div>
+            )}
+            {isCommand && (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                <div style={{ flex: '2 1 260px' }}>
+                  <input style={cInp} value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} placeholder="https://drive.google.com/…" onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addLink(c); } }} />
+                </div>
+                <div style={{ flex: '1 1 160px' }}>
+                  <input style={cInp} value={linkName} onChange={(e) => setLinkName(e.target.value)} placeholder="Label (optional)" onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addLink(c); } }} />
+                </div>
+                <button type="button" className={`btn bl ${attBusy ? 'loading' : ''}`} disabled={attBusy || !linkUrl.trim()} onClick={() => addLink(c)}>＋ Add link</button>
+              </div>
+            )}
+          </div>
+
+          {errMsg && <div style={{ fontSize: 12, color: '#ff6464' }}>{errMsg}</div>}
+          {isCommand && (
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+              {prevOf[c.status] && (
+                <button type="button" className="btn bg" disabled={busyId === c.id} onClick={() => moveTo(c.id, prevOf[c.status])}>← {colById(prevOf[c.status])?.label}</button>
+              )}
+              {nextOf[c.status] && (
+                <button type="button" className="btn bg" style={{ color: '#64BC46' }} disabled={busyId === c.id} onClick={() => moveTo(c.id, nextOf[c.status])}>{colById(nextOf[c.status])?.label} →</button>
+              )}
+            </div>
+          )}
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div className="ph">
+        <div><div className="pt">Assembly</div><div className="ps">{items.length} items · move Line Up work through to approval</div></div>
+      </div>
+
+      {errMsg && <div className="ap-note" style={{ borderColor: 'rgba(255,100,100,.35)', color: '#ff6464' }}>{errMsg}</div>}
+
+      {isCommand && (
+        <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 10 }}>Drag a card between columns to change its status, or click it to view details.</div>
+      )}
+
+      <div className="ap-board" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
+        {COLS.map((col) => {
+          const colItems = items.filter((c) => c.status === col.id);
+          const isOver = overCol === col.id && dragId;
+          return (
+            <div
+              className="ap-col"
+              key={col.id}
+              onDragOver={isCommand ? (e) => { e.preventDefault(); if (overCol !== col.id) setOverCol(col.id); } : undefined}
+              onDragLeave={isCommand ? (e) => { if (e.currentTarget === e.target) setOverCol((o) => (o === col.id ? null : o)); } : undefined}
+              onDrop={isCommand ? (e) => { e.preventDefault(); onDrop(col.id); } : undefined}
+              style={isOver ? { outline: `2px dashed ${col.color}`, outlineOffset: -2, background: col.color + '0d', borderRadius: 12 } : {}}
+            >
+              <div className="ap-col-hd">
+                <span className="ap-col-dot" style={{ background: col.color }} />
+                <span className="ap-col-t" style={{ color: col.color }}>{col.label}</span>
+                <span className="ap-col-n">{colItems.length}</span>
+              </div>
+              <div className="ap-col-bd">
+                {colItems.length === 0 && <div className="ap-empty">{isOver ? 'Drop here' : '—'}</div>}
+                {colItems.map((i) => {
+                  const b = brandById(i.brand_id);
+                  const bc = b?.color || '#9494AA';
+                  const isDragging = dragId === i.id;
+                  return (
+                    <div
+                      className="ap-card"
+                      key={i.id}
+                      draggable={isCommand}
+                      onDragStart={isCommand ? (e) => { setDragId(i.id); e.dataTransfer.effectAllowed = 'move'; } : undefined}
+                      onDragEnd={isCommand ? () => { setDragId(null); setOverCol(null); } : undefined}
+                      onClick={() => setViewing(i)}
+                      style={{ cursor: 'pointer', opacity: isDragging ? 0.4 : 1, transition: 'opacity .12s, box-shadow .12s' }}
+                      title="Click to open · drag to move"
+                    >
+                      <div className="ap-card-t">{i.title}</div>
+                      {i.kind && <div style={{ fontSize: 11, color: 'var(--text3)', margin: '4px 0' }}>{i.kind}</div>}
+                      <div className="ap-card-m"><span className="ap-chip" style={{ background: bc + '22', color: bc }}>{b?.name || 'Unassigned'}</span>{i.due_date && <span className="ap-chip" style={{ background: 'var(--bg2)', color: 'var(--text3)', marginLeft: 6 }}>📅 {i.due_date}</span>}</div>
+                      {isCommand && (
+                        <div style={{ display: 'flex', gap: 5, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
+                          {prevOf[i.status] && (
+                            <button type="button" className="btn bg" style={{ fontSize: 11, padding: '3px 7px' }} onClick={() => moveTo(i.id, prevOf[i.status])}>←</button>
+                          )}
+                          {nextOf[i.status] && (
+                            <button type="button" className="btn bg" style={{ fontSize: 11, padding: '3px 7px', color: '#64BC46' }} onClick={() => moveTo(i.id, nextOf[i.status])}>Advance →</button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+// =====================================================================
+// MC ASSET LIBRARY — mirrors AssetLibrary exactly, but merges uploaded
+// mc_assets files with link attachments from mc_items, grouped by
+// Theme → Kind instead of Channel → Format (collaterals have neither).
+// =====================================================================
+function McAssetLibrary({ mcAssets = [], mcItems = [], mcThemes = [], brands = [], brandColor, isCommand }) {
+  const [brandFilter, setBrandFilter] = useState('all');
+  const [kindFilter, setKindFilter] = useState('all');
+  const [uploading, setUploading] = useState(false);
+  const [uploadErr, setUploadErr] = useState('');
+  const [confirmId, setConfirmId] = useState(null);
+  const [themeTab, setThemeTab] = useState({});
+
+  const [saveState, saveAction] = useActionState(saveMcAsset, {});
+  const [delState, deleteAction] = useActionState(deleteMcAsset, {});
+
+  const brandById = (id) => brands.find((b) => b.id === id) || null;
+  const itemById = (id) => mcItems.find((i) => i.id === id) || null;
+  const colorFor = (id) => {
+    const b = brandById(id);
+    return (b && b.color) || (b && brandColor ? brandColor(b.name) : '#9494AA');
+  };
+
+  function publicUrl(storage_path) {
+    if (!storage_path) return '';
+    if (/^https?:\/\//.test(storage_path)) return storage_path;
+    const supabase = createBrowserClient();
+    const { data } = supabase.storage.from(ASSET_BUCKET).getPublicUrl(storage_path);
+    return data.publicUrl;
+  }
+
+  function themeKind(item) {
+    const theme = item ? mcThemes.find((t) => t.id === item.theme_id) : null;
+    return { theme: theme?.name || 'No theme', kind: item?.kind || 'General' };
+  }
+
+  const entries = [];
+  for (const a of mcAssets) {
+    const item = itemById(a.item_id);
+    const { theme, kind } = themeKind(item);
+    entries.push({
+      key: `asset-${a.id}`,
+      fileKind: a.kind || 'doc',
+      brand_id: a.brand_id,
+      url: publicUrl(a.storage_path),
+      name: (a.storage_path || '').split('/').pop() || 'file',
+      theme, kind,
+      itemTitle: item?.title || null,
+      assetRow: a,
+    });
+  }
+  for (const item of mcItems) {
+    const list = Array.isArray(item.attachments) ? item.attachments : [];
+    const { theme, kind } = themeKind(item);
+    list.forEach((att, i) => {
+      if (!att?.url) return;
+      entries.push({
+        key: `link-${item.id}-${i}`,
+        fileKind: 'link',
+        brand_id: item.brand_id,
+        url: att.url,
+        name: att.name || att.url,
+        theme, kind,
+        itemTitle: item.title || null,
+        assetRow: null,
+      });
+    });
+  }
+
+  async function handleUpload(fileList) {
+    setUploadErr('');
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    let targetBrand = brandFilter !== 'all' ? brandFilter : (brands.length === 1 ? brands[0].id : '');
+    if (!targetBrand) { setUploadErr('Pick a brand tab first, then upload — so each file is tagged to the right brand.'); return; }
+    setUploading(true);
+    try {
+      const supabase = createBrowserClient();
+      for (const file of files) {
+        const ext = (file.name.split('.').pop() || 'bin').toLowerCase();
+        const key = `mc-${targetBrand}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`;
+        const { error } = await supabase.storage.from(ASSET_BUCKET).upload(key, file, { upsert: true });
+        if (error) throw error;
+        const fd = new FormData();
+        fd.set('brand_id', targetBrand);
+        fd.set('storage_path', key);
+        fd.set('kind', kindFromFile(file));
+        saveAction(fd);
+      }
+    } catch (err) {
+      setUploadErr(err.message || 'Upload failed.');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function removeAsset(asset) {
+    const fd = new FormData();
+    fd.set('id', asset.id);
+    fd.set('storage_path', asset.storage_path || '');
+    deleteAction(fd);
+    setConfirmId(null);
+  }
+
+  const counts = {
+    all: entries.length,
+    image: entries.filter((e) => e.fileKind === 'image').length,
+    video: entries.filter((e) => e.fileKind === 'video').length,
+    doc: entries.filter((e) => e.fileKind === 'doc').length,
+    link: entries.filter((e) => e.fileKind === 'link').length,
+  };
+
+  const filtered = entries.filter((e) => {
+    if (brandFilter !== 'all' && e.brand_id !== brandFilter) return false;
+    if (kindFilter !== 'all' && e.fileKind !== kindFilter) return false;
+    return true;
+  });
+
+  const byTheme = {};
+  for (const e of filtered) { (byTheme[e.theme] ||= {}); (byTheme[e.theme][e.kind] ||= []).push(e); }
+  const themeKeys = Object.keys(byTheme).sort((a, b) => (a === 'No theme' ? 1 : b === 'No theme' ? -1 : a.localeCompare(b)));
+
+  return (
+    <>
+      <div className="ph">
+        <div>
+          <div className="pt">Assets</div>
+          <div className="ps">Every finished file and link produced under Marketing Collaterals — grouped by theme and kind.</div>
+        </div>
+        {isCommand && (
+          <label className="btn bl" style={{ cursor: uploading ? 'default' : 'pointer', opacity: uploading ? 0.6 : 1 }}>
+            {uploading ? 'Uploading…' : '＋ Upload assets'}
+            <input type="file" multiple accept="image/*,video/*,application/pdf,.pdf,.doc,.docx,.ppt,.pptx,.zip" onChange={(e) => { handleUpload(e.target.files); e.target.value = ''; }} style={{ display: 'none' }} disabled={uploading} />
+          </label>
+        )}
+      </div>
+
+      {uploadErr && <div style={{ fontSize: 12, color: '#ff6464', marginBottom: 12 }}>{uploadErr}</div>}
+      {saveState?.error && <div style={{ fontSize: 12, color: '#ff6464', marginBottom: 12 }}>{saveState.error}</div>}
+      {delState?.error && <div style={{ fontSize: 12, color: '#ff6464', marginBottom: 12 }}>{delState.error}</div>}
+
+      {brands.length > 1 && (
+        <div className="cvws" style={{ display: 'flex', flexWrap: 'wrap', width: 'fit-content', maxWidth: '100%', marginBottom: 10 }}>
+          <div className={`cvw ${brandFilter === 'all' ? 'on' : ''}`} onClick={() => setBrandFilter('all')}>All brands</div>
+          {brands.map((b) => {
+            const on = brandFilter === b.id;
+            const c = b.color || (brandColor ? brandColor(b.name) : '#9494AA');
+            return <div key={b.id} className={`cvw ${on ? 'on' : ''}`} onClick={() => setBrandFilter(b.id)} style={on ? { color: c, background: c + '22' } : { color: c }}>{b.name}</div>;
+          })}
+        </div>
+      )}
+
+      <div className="cvws" style={{ display: 'flex', flexWrap: 'wrap', width: 'fit-content', maxWidth: '100%', marginBottom: 16 }}>
+        <div className={`cvw ${kindFilter === 'all' ? 'on' : ''}`} onClick={() => setKindFilter('all')}>All ({counts.all})</div>
+        {Object.entries(KIND_META).map(([k, meta]) => {
+          const on = kindFilter === k;
+          return <div key={k} className={`cvw ${on ? 'on' : ''}`} onClick={() => setKindFilter(k)} style={on ? { color: meta.color, background: meta.color + '22' } : { color: meta.color }}>{meta.icon} {meta.label} ({counts[k]})</div>;
+        })}
+        <div className={`cvw ${kindFilter === 'link' ? 'on' : ''}`} onClick={() => setKindFilter('link')} style={kindFilter === 'link' ? { color: '#AED8FF', background: '#AED8FF22' } : { color: '#AED8FF' }}>🔗 Links ({counts.link})</div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <ComingSoon
+          icon="🗂"
+          title={entries.length === 0 ? 'No assets yet' : 'Nothing matches this filter'}
+          body={entries.length === 0 ? 'Upload finished files here, or attach links on an Assembly card — both land here, grouped by theme and kind.' : 'Try a different brand or type filter to see more.'}
+        />
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+          {themeKeys.map((th) => {
+            const present = byTheme[th];
+            const thTotal = Object.values(present).reduce((s, arr) => s + arr.length, 0);
+            const kindTabs = Object.keys(present).sort((a, b) => a.localeCompare(b));
+            const active = themeTab[th] || kindTabs[0];
+            const activeItems = present[active] || [];
+            return (
+              <div key={th}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, paddingBottom: 8, borderBottom: '2px solid #FFAEF133' }}>
+                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#FFAEF1' }} />
+                  <span style={{ fontSize: 15, fontWeight: 700, color: '#FFAEF1' }}>{th}</span>
+                  <span style={{ fontSize: 12, color: 'var(--text3)' }}>· {thTotal}</span>
+                </div>
+                <div className="cvws" style={{ display: 'flex', flexWrap: 'wrap', width: 'fit-content', maxWidth: '100%', marginBottom: 14 }}>
+                  {kindTabs.map((k) => {
+                    const n = (present[k] || []).length;
+                    const on = k === active;
+                    return <div key={k} className={`cvw ${on ? 'on' : ''}`} onClick={() => setThemeTab((m) => ({ ...m, [th]: k }))} style={on ? { color: '#FFAEF1', background: '#FFAEF122' } : { color: 'var(--text2)' }}>{k} ({n})</div>;
+                  })}
+                </div>
+                {activeItems.length === 0 ? (
+                  <div style={{ fontSize: 12, color: 'var(--text3)', padding: '8px 2px 4px', marginBottom: 18 }}>No assets in "{active}" yet.</div>
+                ) : (
+                  <div style={{ marginBottom: 18 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 14 }}>
+                      {activeItems.map((e) => {
+                        const meta = e.fileKind === 'link' ? { label: 'Link', icon: '🔗', color: '#AED8FF' } : (KIND_META[e.fileKind] || KIND_META.doc);
+                        const c = colorFor(e.brand_id);
+                        const bName = (brandById(e.brand_id) || {}).name || 'Unassigned';
+                        return (
+                          <div key={e.key} style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', background: 'var(--bg2)', display: 'flex', flexDirection: 'column' }}>
+                            <div style={{ position: 'relative', height: 130, background: 'var(--bg3)', display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
+                              {e.fileKind === 'image' ? (
+                                <img src={e.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              ) : e.fileKind === 'video' ? (
+                                <video src={e.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted preload="metadata" />
+                              ) : (
+                                <div style={{ fontSize: 38 }}>{meta.icon}</div>
+                              )}
+                              <span style={{ position: 'absolute', top: 8, left: 8, fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: '#fff', background: meta.color, padding: '2px 7px', borderRadius: 20 }}>{e.fileKind}</span>
+                              {isCommand && e.assetRow && (
+                                confirmId === e.assetRow.id ? (
+                                  <span style={{ position: 'absolute', top: 6, right: 6, display: 'flex', gap: 4 }}>
+                                    <button type="button" onClick={() => removeAsset(e.assetRow)} title="Confirm delete" style={{ width: 22, height: 22, borderRadius: '50%', background: '#ff6464', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 12 }}>✓</button>
+                                    <button type="button" onClick={() => setConfirmId(null)} title="Cancel" style={{ width: 22, height: 22, borderRadius: '50%', background: 'rgba(0,0,0,.6)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 12 }}>×</button>
+                                  </span>
+                                ) : (
+                                  <button type="button" onClick={() => setConfirmId(e.assetRow.id)} title="Delete asset" style={{ position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: '50%', background: 'rgba(0,0,0,.55)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 12 }}>🗑</button>
+                                )
+                              )}
+                            </div>
+                            <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                              <span className="sb2" style={{ background: c + '22', color: c, alignSelf: 'flex-start', fontSize: 10 }}>{bName}</span>
+                              {e.itemTitle && <div style={{ fontSize: 11, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={e.itemTitle}>↳ {e.itemTitle}</div>}
+                              <a href={e.url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: 'var(--text2)', textDecoration: 'none' }}>Open ↗</a>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+}
+
+
 // One table per campaign — bulk row entry for ideas, built for visibility
 // across a campaign's whole content plan at a glance. Every row IS a row in
 // the `ideas` table; flipping a row's Ready switch is what makes it pop as
