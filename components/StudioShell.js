@@ -3908,6 +3908,7 @@ function ProductionView({ content, ideas = [], brands, campaigns, brandById, isC
     const st = colById(c.status) || COLS[0];
     const linkedIdea = ideas.find((x) => x.id === c.idea_id);
     const camp = campaigns.find((x) => x.id === c.campaign_id);
+    const cc = linkedIdea ? (CHANNEL_COLOR[linkedIdea.channel] || '#9494AA') : '#9494AA';
     return (
       <>
         <div className="ph">
@@ -3918,7 +3919,15 @@ function ProductionView({ content, ideas = [], brands, campaigns, brandById, isC
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             <span className="ap-chip" style={{ background: bc + '22', color: bc }}>{b?.name || 'Unassigned'}</span>
             <span className="ap-chip" style={{ background: st.color + '22', color: st.color }}>● {st.label}</span>
+            {camp && <span className="ap-chip" style={{ background: 'var(--bg3)', color: 'var(--text2)' }}>◆ {camp.name}</span>}
+            {linkedIdea?.pillar && <span className="ap-chip" style={{ background: 'var(--bg3)', color: 'var(--text2)' }}>{linkedIdea.pillar}</span>}
+            {linkedIdea?.channel && <span className="ap-chip" style={{ background: cc + '22', color: cc }}>{linkedIdea.channel}</span>}
+            {linkedIdea?.format && <span className="ap-chip" style={{ background: 'var(--bg3)', color: 'var(--text3)' }}>{linkedIdea.format}</span>}
           </div>
+
+          {linkedIdea && (linkedIdea.publish_date || linkedIdea.production_due || linkedIdea.edit_due) && (
+            <DateRow publish={linkedIdea.publish_date} production={linkedIdea.production_due} edit={linkedIdea.edit_due} />
+          )}
 
           <div>
             <div style={cLbl}>Body / copy</div>
@@ -3927,16 +3936,38 @@ function ProductionView({ content, ideas = [], brands, campaigns, brandById, isC
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-            <div>
-              <div style={cLbl}>From idea</div>
-              <div style={{ fontSize: 13, color: 'var(--text2)' }}>{linkedIdea ? `${linkedIdea.title}${linkedIdea.channel ? ' · ' + linkedIdea.channel : ''}` : '—'}</div>
+          {/* Everything below comes from the source idea (Content Bucket), so
+              production has the full brief without needing to switch pages —
+              only shows up when the card is still linked to that idea. */}
+          {linkedIdea ? (
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text3)' }}>From idea: {linkedIdea.title}</div>
+              {linkedIdea.hook && <div><div style={cLbl}>Hook</div><div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{linkedIdea.hook}</div></div>}
+              {linkedIdea.caption && <div><div style={cLbl}>Caption</div><div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{linkedIdea.caption}</div></div>}
+              {linkedIdea.hashtags && <div><div style={cLbl}>Hashtags</div><div style={{ fontSize: 13, color: cc, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{linkedIdea.hashtags}</div></div>}
+              {linkedIdea.mandatories && <div><div style={cLbl}>Mandatories</div><div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{linkedIdea.mandatories}</div></div>}
+              {linkedIdea.notes && <div><div style={cLbl}>Notes</div><div style={{ fontSize: 13, color: 'var(--text2)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{linkedIdea.notes}</div></div>}
+              {/carousel/i.test(linkedIdea.format || '') && Array.isArray(linkedIdea.carousel_slides) && linkedIdea.carousel_slides.some(Boolean) && (
+                <div>
+                  <div style={cLbl}>Carousel Slides</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {linkedIdea.carousel_slides.map((s, idx) => s ? (
+                      <div key={idx} style={{ fontSize: 12.5, color: 'var(--text2)', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px' }}>
+                        <span style={{ color: 'var(--text3)', fontWeight: 600 }}>Slide {idx + 1}: </span>{s}
+                      </div>
+                    ) : null)}
+                  </div>
+                </div>
+              )}
+              {!linkedIdea.hook && !linkedIdea.caption && !linkedIdea.hashtags && !linkedIdea.mandatories && !linkedIdea.notes && (
+                <div style={{ fontSize: 12, color: 'var(--text3)' }}>The linked idea has no additional details filled in.</div>
+              )}
             </div>
-            <div>
-              <div style={cLbl}>Campaign</div>
-              <div style={{ fontSize: 13, color: 'var(--text2)' }}>{camp ? camp.name : '—'}</div>
+          ) : (
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, fontSize: 12, color: 'var(--text3)' }}>
+              Not linked to a Content Bucket idea — either created directly in Production, or its source idea was deleted (this card's own title/copy/campaign are unaffected).
             </div>
-          </div>
+          )}
 
           {/* Attachments — Google Drive links for submission. Command + freelance. */}
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
