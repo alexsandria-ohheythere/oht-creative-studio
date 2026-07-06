@@ -11,10 +11,10 @@ export default async function DashboardPage() {
 
   if (!user) redirect('/login');
 
-  // Load this user's profile (role + brand scope).
+  // Load this user's profile (role + brand scope + delete permission).
   const { data: profile } = await supabase
     .from('profiles')
-    .select('full_name, role, brand_scope, title')
+    .select('full_name, role, brand_scope, title, can_delete')
     .eq('id', user.id)
     .single();
 
@@ -101,6 +101,7 @@ export default async function DashboardPage() {
     role: 'freelance',
     brand_scope: null,
     title: 'Member',
+    can_delete: true,
   };
 
   const googleConnected = !!gtok;
