@@ -4504,6 +4504,7 @@ function PublishingCenter({ content, ideas = [], brands, brandColor, subView }) 
   const brandById = (id) => brands.find((b) => b.id === id) || null;
   const now = new Date();
   const [view, setView] = useState('month');
+  const [viewing, setViewing] = useState(null); // idea opened from a clicked calendar/table entry
   // Brand filter: 'all' shows everything; otherwise a brand id scopes the calendar.
   const [brandFilter, setBrandFilter] = useState('all');
   const year = now.getFullYear();
@@ -4537,8 +4538,60 @@ function PublishingCenter({ content, ideas = [], brands, brandColor, subView }) 
 
   const scheduled = scoped.filter((i) => i.publish_date).sort((a, b) => (a.publish_date < b.publish_date ? -1 : 1));
 
+  // Clicking any calendar chip or timeline/board row opens this — same rich
+  // idea detail used in Content Bucket/Ideas, since these entries ARE ideas.
+  let viewingPanel = null;
+  if (viewing) {
+    const i = viewing;
+    const b = brandById(i.brand_id);
+    const bc = b?.color || '#9494AA';
+    const cc = CHANNEL_COLOR[i.channel] || '#9494AA';
+    viewingPanel = (
+      <Modal title={i.title || 'Untitled'} subtitle="Scheduled publish detail" onClose={() => setViewing(null)}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span className="ap-chip" style={{ background: bc + '22', color: bc }}>{b?.name || 'Unassigned'}</span>
+            {i.pillar && <span className="ap-chip" style={{ background: 'var(--bg3)', color: 'var(--text2)' }}>{i.pillar}</span>}
+            {i.channel && <span className="ap-chip" style={{ background: cc + '22', color: cc }}>{i.channel}</span>}
+            {i.format && <span className="ap-chip" style={{ background: 'var(--bg3)', color: 'var(--text3)' }}>{i.format}</span>}
+          </div>
+
+          <DateRow publish={i.publish_date} production={i.production_due} edit={i.edit_due} />
+
+          {i.hook && <div><div style={cLbl}>Hook</div><div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{i.hook}</div></div>}
+          {i.script && <div><div style={cLbl}>Script</div><div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{i.script}</div></div>}
+          {i.visual_refs && <div><div style={cLbl}>Visual References</div><div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{i.visual_refs}</div></div>}
+          {i.reference_links && <div><div style={cLbl}>Reference Links</div><div style={{ fontSize: 13, color: 'var(--text2)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{i.reference_links}</div></div>}
+          {i.caption && <div><div style={cLbl}>Caption</div><div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{i.caption}</div></div>}
+          {i.hashtags && <div><div style={cLbl}>Hashtags</div><div style={{ fontSize: 13, color: cc, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{i.hashtags}</div></div>}
+          {i.mandatories && <div><div style={cLbl}>Mandatories</div><div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{i.mandatories}</div></div>}
+          {i.notes && <div><div style={cLbl}>Notes</div><div style={{ fontSize: 13, color: 'var(--text2)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{i.notes}</div></div>}
+
+          {/carousel/i.test(i.format || '') && Array.isArray(i.carousel_slides) && i.carousel_slides.some(Boolean) && (
+            <div>
+              <div style={cLbl}>Carousel Slides</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {i.carousel_slides.map((s, idx) => s ? (
+                  <div key={idx} style={{ fontSize: 12.5, color: 'var(--text2)', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px' }}>
+                    <span style={{ color: 'var(--text3)', fontWeight: 600 }}>Slide {idx + 1}: </span>{s}
+                  </div>
+                ) : null)}
+              </div>
+            </div>
+          )}
+
+          {!i.hook && !i.script && !i.visual_refs && !i.reference_links && !i.caption && !i.hashtags && !i.mandatories && !i.notes && (
+            <div style={{ fontSize: 12, color: 'var(--text3)' }}>No additional details filled in yet.</div>
+          )}
+        </div>
+      </Modal>
+    );
+  }
+
   return (
     <>
+      {viewingPanel}
+
       <div className="ph">
         <div>
           <div className="pt">Publishing Center</div>
@@ -4597,7 +4650,8 @@ function PublishingCenter({ content, ideas = [], brands, brandColor, subView }) 
                       className="cev"
                       key={e.id}
                       title={e.channel ? `${e.title} · ${e.channel}` : e.title}
-                      style={{ background: cc + '2e', color: cc }}
+                      style={{ background: cc + '2e', color: cc, cursor: 'pointer' }}
+                      onClick={() => setViewing(e)}
                     >
                       {e.title}
                     </div>
@@ -4622,7 +4676,7 @@ function PublishingCenter({ content, ideas = [], brands, brandColor, subView }) 
             const bc = b?.color || '#9494AA';
             const cc = CHANNEL_COLOR[i.channel] || '#9494AA';
             return (
-              <div className="tr" key={i.id} style={{ gridTemplateColumns: '2.5fr 1fr 1fr 1fr' }}>
+              <div className="tr" key={i.id} style={{ gridTemplateColumns: '2.5fr 1fr 1fr 1fr', cursor: 'pointer' }} onClick={() => setViewing(i)}>
                 <div className="tdt">{i.title}</div>
                 <div className="td"><span className="sb2" style={{ background: bc + '22', color: bc }}>{b?.name || 'Unassigned'}</span></div>
                 <div className="td">{i.channel ? <span className="sb2" style={{ background: cc + '22', color: cc }}>{i.channel}</span> : '—'}</div>
