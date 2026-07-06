@@ -252,7 +252,7 @@ export default function StudioShell({ profile, email, content, brands = [], camp
             )}
 
             {parentId === 'publishing' && (
-              <PublishingCenter content={content} brands={brands} brandColor={brandColor} subView={subView} />
+              <PublishingCenter content={content} ideas={ideas} brands={brands} brandColor={brandColor} subView={subView} />
             )}
 
             {parentId === 'insights' && (
@@ -4217,13 +4217,14 @@ function ProductionView({ content, ideas = [], brands, campaigns, brandById, isC
 // =====================================================================
 // PUBLISHING CENTER — calendar of scheduled content across channels
 // =====================================================================
-function PublishingCenter({ content, brands, brandColor, subView }) {
+function PublishingCenter({ content, ideas = [], brands, brandColor, subView }) {
   if (subView === 'channels') {
-    return <ChannelsView content={content} brands={brands} brandColor={brandColor} />;
+    return <ChannelsView ideas={ideas} brands={brands} brandColor={brandColor} />;
   }
+  const brandById = (id) => brands.find((b) => b.id === id) || null;
   const now = new Date();
   const [view, setView] = useState('month');
-  // Brand filter: 'all' shows everything; otherwise a brand name scopes the calendar.
+  // Brand filter: 'all' shows everything; otherwise a brand id scopes the calendar.
   const [brandFilter, setBrandFilter] = useState('all');
   const year = now.getFullYear();
   const month = now.getMonth();
@@ -4232,26 +4233,29 @@ function PublishingCenter({ content, brands, brandColor, subView }) {
   const startPad = first.getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-  // Apply the brand filter to all views (month grid + board/timeline tables).
+  // The calendar plots what's actually scheduled to publish, which lives on
+  // ideas.publish_date (content_items has no publish date, channel, or brand
+  // name field of its own — those only exist on the idea it came from).
   const scoped = brandFilter === 'all'
-    ? content
-    : content.filter((c) => c.brand === brandFilter);
+    ? ideas
+    : ideas.filter((i) => i.brand_id === brandFilter);
 
-  // map content with a publish/due date in this month → day number
+  // map ideas with a publish date in this month → day number
   const events = {};
-  scoped.forEach((c) => {
-    const ds = c.publish_at || c.due_date;
-    if (!ds) return;
-    const d = new Date(ds);
+  scoped.forEach((i) => {
+    if (!i.publish_date) return;
+    const d = new Date(i.publish_date + 'T00:00:00');
     if (d.getFullYear() === year && d.getMonth() === month) {
       const day = d.getDate();
-      (events[day] = events[day] || []).push(c);
+      (events[day] = events[day] || []).push(i);
     }
   });
 
   const cells = [];
   for (let i = 0; i < startPad; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+  const scheduled = scoped.filter((i) => i.publish_date).sort((a, b) => (a.publish_date < b.publish_date ? -1 : 1));
 
   return (
     <>
@@ -4280,12 +4284,12 @@ function PublishingCenter({ content, brands, brandColor, subView }) {
           All Brands
         </div>
         {brands.map((b) => {
-          const on = brandFilter === b.name;
+          const on = brandFilter === b.id;
           return (
             <div
               key={b.id}
               className={`cvw ${on ? 'on' : ''}`}
-              onClick={() => setBrandFilter(b.name)}
+              onClick={() => setBrandFilter(b.id)}
               style={on ? { color: b.color, background: (b.color || '#9494AA') + '22' } : { color: b.color }}
             >
               {b.name}
@@ -4306,7 +4310,8 @@ function PublishingCenter({ content, brands, brandColor, subView }) {
               <div className={`cc ${d === now.getDate() ? 'today' : ''} ${d === null ? 'om' : ''}`} key={i}>
                 {d && <div className="ccn">{d}</div>}
                 {d && (events[d] || []).map((e) => {
-                  const cc = CHANNEL_COLOR[e.channel] || brandColor(e.brand);
+                  const b = brandById(e.brand_id);
+                  const cc = CHANNEL_COLOR[e.channel] || (b?.color || '#9494AA');
                   return (
                     <div
                       className="cev"
@@ -4329,18 +4334,19 @@ function PublishingCenter({ content, brands, brandColor, subView }) {
           <div className="tblh" style={{ gridTemplateColumns: '2.5fr 1fr 1fr 1fr' }}>
             <div className="th">Title</div><div className="th">Brand</div><div className="th">Channel</div><div className="th">Publishes</div>
           </div>
-          {scoped.filter((c) => c.status === 'scheduled' || c.publish_at).length === 0 && (
+          {scheduled.length === 0 && (
             <div style={{ padding: 30, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>Nothing scheduled.</div>
           )}
-          {scoped.filter((c) => c.status === 'scheduled' || c.publish_at).map((c) => {
-            const bc = brandColor(c.brand);
-            const cc = CHANNEL_COLOR[c.channel] || '#9494AA';
+          {scheduled.map((i) => {
+            const b = brandById(i.brand_id);
+            const bc = b?.color || '#9494AA';
+            const cc = CHANNEL_COLOR[i.channel] || '#9494AA';
             return (
-              <div className="tr" key={c.id} style={{ gridTemplateColumns: '2.5fr 1fr 1fr 1fr' }}>
-                <div className="tdt">{c.title}</div>
-                <div className="td"><span className="sb2" style={{ background: bc + '22', color: bc }}>{c.brand}</span></div>
-                <div className="td">{c.channel ? <span className="sb2" style={{ background: cc + '22', color: cc }}>{c.channel}</span> : '—'}</div>
-                <div className="td">{c.publish_at ? new Date(c.publish_at).toLocaleDateString() : (c.due_date || '—')}</div>
+              <div className="tr" key={i.id} style={{ gridTemplateColumns: '2.5fr 1fr 1fr 1fr' }}>
+                <div className="tdt">{i.title}</div>
+                <div className="td"><span className="sb2" style={{ background: bc + '22', color: bc }}>{b?.name || 'Unassigned'}</span></div>
+                <div className="td">{i.channel ? <span className="sb2" style={{ background: cc + '22', color: cc }}>{i.channel}</span> : '—'}</div>
+                <div className="td">{i.publish_date || '—'}</div>
               </div>
             );
           })}
@@ -4353,17 +4359,19 @@ function PublishingCenter({ content, brands, brandColor, subView }) {
 // =====================================================================
 // CHANNELS VIEW — pick a platform, see content lined up per brand
 // =====================================================================
-function ChannelsView({ content, brands, brandColor }) {
+function ChannelsView({ ideas = [], brands, brandColor }) {
   const PLATFORMS = ['TikTok', 'Instagram', 'Threads', 'Facebook', 'YouTube', 'Blog'];
   const [platform, setPlatform] = useState('Instagram');
 
-  // All content on the selected platform.
-  const onPlatform = content.filter((c) => c.channel === platform);
+  // All ideas on the selected platform — channel/publish_date only exist on
+  // ideas, not content_items, so this rolls up from the Content Bucket data.
+  const onPlatform = ideas.filter((i) => i.channel === platform);
 
-  // Per-brand rollup: scheduled, in production (anything not scheduled/published), total.
+  // Per-brand rollup: scheduled (has a publish date), in production (ready
+  // but no publish date yet), total.
   const rows = brands.map((b) => {
-    const items = onPlatform.filter((c) => c.brand === b.name);
-    const scheduled = items.filter((c) => c.status === 'scheduled' || c.publish_at).length;
+    const items = onPlatform.filter((i) => i.brand_id === b.id);
+    const scheduled = items.filter((i) => i.publish_date).length;
     const total = items.length;
     const inProd = total - scheduled;
     return { brand: b.name, color: b.color || brandColor(b.name), scheduled, inProd, total };
