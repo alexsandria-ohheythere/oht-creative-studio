@@ -924,7 +924,7 @@ function BrandCenter({ brands, isCommand, canDelete = true, content }) {
 
   // ----- DETAIL MODE -----
   if (view === 'detail' && open) {
-    const items = content.filter((c) => c.brand === open.name);
+    const items = content.filter((c) => c.brand_id === open.id);
     const field = (label, value) => (
       <div style={{ marginBottom: 12 }}>
         <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text3)', marginBottom: 3 }}>{label}</div>
@@ -1234,7 +1234,7 @@ function BrandCenter({ brands, isCommand, canDelete = true, content }) {
 
       <div className="bgrid">
         {brands.map((b) => {
-          const items = content.filter((c) => c.brand === b.name);
+          const items = content.filter((c) => c.brand_id === b.id);
           return (
             <div className="bcard" key={b.id} onClick={() => openDetail(b.id)}>
               <div className="bc-hd">
