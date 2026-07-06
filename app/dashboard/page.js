@@ -52,6 +52,13 @@ export default async function DashboardPage() {
     .select('id, brand_id, content_id, storage_path, kind, created_at')
     .order('created_at', { ascending: false });
 
+  // Load brand templates for the Marketing Collaterals → Theme module.
+  // Command-only table (RLS enforces this); freelancers will just get [].
+  const { data: templates } = await supabase
+    .from('brand_templates')
+    .select('id, brand_id, name, kind, body, created_at')
+    .order('created_at', { ascending: false });
+
   const safeProfile = profile || {
     full_name: user.email,
     role: 'freelance',
@@ -75,6 +82,7 @@ export default async function DashboardPage() {
       brands={brands || []}
       campaigns={campaigns || []}
       assets={assets || []}
+      templates={templates || []}
       googleConnected={googleConnected}
     />
   );
