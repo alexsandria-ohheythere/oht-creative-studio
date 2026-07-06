@@ -34,11 +34,9 @@
 
     { "id": "mc.theme", "label": "Theme", "icon": "◆", "section": "Marketing Collaterals", "roles": ["command"] },
 
-    { "id": "mc.content", "label": "Content", "icon": "◆", "section": "Marketing Collaterals", "roles": ["command", "freelance"] },
+    { "id": "mc.content", "label": "Line Up", "icon": "◆", "section": "Marketing Collaterals", "roles": ["command", "freelance"] },
 
-    { "id": "mc.briefs", "label": "Briefs", "icon": "◆", "section": "Marketing Collaterals", "roles": ["command", "freelance"] },
-
-    { "id": "mc.production", "label": "Production", "icon": "◆", "section": "Marketing Collaterals", "roles": ["command", "freelance"] },
+    { "id": "mc.production", "label": "Assembly", "icon": "◆", "section": "Marketing Collaterals", "roles": ["command", "freelance"] },
 
     { "id": "mc.assets", "label": "Assets", "icon": "◆", "section": "Marketing Collaterals", "roles": ["command"] }
   ],
