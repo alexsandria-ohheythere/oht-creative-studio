@@ -3069,6 +3069,7 @@ function McAssetLibrary({ mcAssets = [], mcItems = [], mcThemes = [], brands = [
 // either way, since the bucket is meant to stay the full plan of record.
 function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
   const [showForm, setShowForm] = useState(false);
+  const [viewing, setViewing] = useState(null); // row opened for read-only detail
   const [editing, setEditing] = useState(null);
   const [state, formAction, pending] = useActionState(saveIdea, {});
   const [, readyAction, togglingReady] = useActionState(setIdeaReady, {});
@@ -3125,6 +3126,67 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
   const unassigned = ideas.filter((i) => !i.campaign_id || !campIds.has(i.campaign_id));
   if (unassigned.length > 0 || campaigns.length === 0) {
     groups.push({ campaign: null, rows: unassigned });
+  }
+
+  // Read-only detail — table rows are truncated to one line, so this is
+  // the only place to see the full hook/caption/hashtags/mandatories/notes
+  // without opening the edit form. Available to everyone (view is safe
+  // for freelance too), even though edit/duplicate/delete stay command-only.
+  if (viewing) {
+    const i = viewing;
+    const b = brandById(i.brand_id);
+    const bc = b?.color || '#9494AA';
+    const camp = campaigns.find((c) => c.id === i.campaign_id);
+    const cc = CHANNEL_COLOR[i.channel] || '#9494AA';
+    return (
+      <>
+        <div className="ph">
+          <div><div className="pt">{i.title || 'Untitled'}</div><div className="ps">Content Bucket row detail</div></div>
+          <button type="button" className="btn bg" onClick={() => setViewing(null)}>← Back</button>
+        </div>
+        <div className="sc" style={{ padding: 22, maxWidth: 680, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span className="ap-chip" style={{ background: bc + '22', color: bc }}>{b?.name || 'Unassigned'}</span>
+            {camp && <span className="ap-chip" style={{ background: 'var(--bg3)', color: 'var(--text2)' }}>◆ {camp.name}</span>}
+            {i.pillar && <span className="ap-chip" style={{ background: 'var(--bg3)', color: 'var(--text2)' }}>{i.pillar}</span>}
+            {i.channel && <span className="ap-chip" style={{ background: cc + '22', color: cc }}>{i.channel}</span>}
+            {i.format && <span className="ap-chip" style={{ background: 'var(--bg3)', color: 'var(--text3)' }}>{i.format}</span>}
+            <Pill text={i.ready ? 'Ready' : 'Draft'} color={i.ready ? '#64BC46' : '#9494AA'} />
+          </div>
+
+          <DateRow publish={i.publish_date} production={i.production_due} edit={i.edit_due} />
+
+          {i.hook && <div><div style={cLbl}>Hook</div><div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{i.hook}</div></div>}
+          {i.caption && <div><div style={cLbl}>Caption</div><div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{i.caption}</div></div>}
+          {i.hashtags && <div><div style={cLbl}>Hashtags</div><div style={{ fontSize: 13, color: cc, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{i.hashtags}</div></div>}
+          {i.mandatories && <div><div style={cLbl}>Mandatories</div><div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{i.mandatories}</div></div>}
+          {i.notes && <div><div style={cLbl}>Notes</div><div style={{ fontSize: 13, color: 'var(--text2)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{i.notes}</div></div>}
+
+          {/carousel/i.test(i.format || '') && Array.isArray(i.carousel_slides) && i.carousel_slides.some(Boolean) && (
+            <div>
+              <div style={cLbl}>Carousel Slides</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {i.carousel_slides.map((s, idx) => s ? (
+                  <div key={idx} style={{ fontSize: 12.5, color: 'var(--text2)', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px' }}>
+                    <span style={{ color: 'var(--text3)', fontWeight: 600 }}>Slide {idx + 1}: </span>{s}
+                  </div>
+                ) : null)}
+              </div>
+            </div>
+          )}
+
+          {!i.hook && !i.caption && !i.hashtags && !i.mandatories && !i.notes && (
+            <div style={{ fontSize: 12, color: 'var(--text3)' }}>No additional details filled in yet.</div>
+          )}
+
+          {isCommand && (
+            <div style={{ display: 'flex', gap: 10, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+              <button type="button" className="btn bl" onClick={() => { setViewing(null); openEditRow(i); }}>✎ Edit</button>
+            </div>
+          )}
+        </div>
+      </>
+    );
   }
 
   return (
@@ -3293,15 +3355,18 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
                               )}
                             </td>
                             <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
-                              {isCommand && (
-                                <div style={{ display: 'flex', gap: 5 }}>
-                                  <button type="button" className="btn bg" style={{ fontSize: 11, padding: '3px 7px' }} onClick={() => openEditRow(i)}>✎</button>
-                                  <form action={duplicateAction}><input type="hidden" name="id" value={i.id} />
-                                    <button className="btn bg" type="submit" disabled={duplicating} title="Duplicate row" style={{ fontSize: 11, padding: '3px 7px' }}>⧉</button></form>
-                                  <form action={deleteAction}><input type="hidden" name="id" value={i.id} />
-                                    <button className="btn bg" type="submit" disabled={deletingIdea} style={{ fontSize: 11, padding: '3px 7px', color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }}>🗑</button></form>
-                                </div>
-                              )}
+                              <div style={{ display: 'flex', gap: 5 }}>
+                                <button type="button" className="btn bg" style={{ fontSize: 11, padding: '3px 7px' }} onClick={() => setViewing(i)} title="View details">👁</button>
+                                {isCommand && (
+                                  <>
+                                    <button type="button" className="btn bg" style={{ fontSize: 11, padding: '3px 7px' }} onClick={() => openEditRow(i)}>✎</button>
+                                    <form action={duplicateAction}><input type="hidden" name="id" value={i.id} />
+                                      <button className="btn bg" type="submit" disabled={duplicating} title="Duplicate row" style={{ fontSize: 11, padding: '3px 7px' }}>⧉</button></form>
+                                    <form action={deleteAction}><input type="hidden" name="id" value={i.id} />
+                                      <button className="btn bg" type="submit" disabled={deletingIdea} style={{ fontSize: 11, padding: '3px 7px', color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }}>🗑</button></form>
+                                  </>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         );
@@ -3324,10 +3389,76 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
 // has been retired; editing detail happens back in the Content Bucket.
 function IdeasView({ ideas, content = [], brands, campaigns, brandById, isCommand }) {
   const readyIdeas = ideas.filter((i) => i.ready);
+  const [viewing, setViewing] = useState(null); // idea opened for full-detail read-only view
   const [, promoteAction, promoting] = useActionState(promoteIdeaToProduction, {});
   const [delState, deleteAction, deletingIdea] = useActionState(deleteIdea, {});
 
   const promotedIdeaIds = new Set(content.filter((c) => c.idea_id).map((c) => c.idea_id));
+
+  // Full detail — the card view clamps caption to 3 lines and never shows
+  // mandatories/notes at all, so this is the only place to read everything.
+  if (viewing) {
+    const i = viewing;
+    const b = brandById(i.brand_id);
+    const bc = b?.color || '#9494AA';
+    const camp = campaigns.find((c) => c.id === i.campaign_id);
+    const cc = CHANNEL_COLOR[i.channel] || '#9494AA';
+    const alreadyInProduction = promotedIdeaIds.has(i.id);
+    return (
+      <>
+        <div className="ph">
+          <div><div className="pt">{i.title || 'Untitled'}</div><div className="ps">Idea detail</div></div>
+          <button type="button" className="btn bg" onClick={() => setViewing(null)}>← Back</button>
+        </div>
+        <div className="sc" style={{ padding: 22, maxWidth: 680, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span className="ap-chip" style={{ background: bc + '22', color: bc }}>{b?.name || 'Unassigned'}</span>
+            {camp && <span className="ap-chip" style={{ background: 'var(--bg3)', color: 'var(--text2)' }}>◆ {camp.name}</span>}
+            {i.channel && <span className="ap-chip" style={{ background: cc + '22', color: cc }}>{i.channel}</span>}
+            {i.format && <span className="ap-chip" style={{ background: 'var(--bg3)', color: 'var(--text3)' }}>{i.format}</span>}
+            <Pill text={alreadyInProduction ? 'in production' : i.status} color={alreadyInProduction ? '#ffbb44' : (STATUS_COLOR[i.status] || '#9494AA')} />
+          </div>
+
+          <DateRow publish={i.publish_date} production={i.production_due} edit={i.edit_due} />
+
+          {i.hook && <div><div style={cLbl}>Hook</div><div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{i.hook}</div></div>}
+          {i.caption && <div><div style={cLbl}>Caption</div><div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{i.caption}</div></div>}
+          {i.hashtags && <div><div style={cLbl}>Hashtags</div><div style={{ fontSize: 13, color: cc, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{i.hashtags}</div></div>}
+          {i.mandatories && <div><div style={cLbl}>Mandatories</div><div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{i.mandatories}</div></div>}
+          {i.notes && <div><div style={cLbl}>Notes</div><div style={{ fontSize: 13, color: 'var(--text2)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{i.notes}</div></div>}
+
+          {/carousel/i.test(i.format || '') && Array.isArray(i.carousel_slides) && i.carousel_slides.some(Boolean) && (
+            <div>
+              <div style={cLbl}>Carousel Slides</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {i.carousel_slides.map((s, idx) => s ? (
+                  <div key={idx} style={{ fontSize: 12.5, color: 'var(--text2)', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px' }}>
+                    <span style={{ color: 'var(--text3)', fontWeight: 600 }}>Slide {idx + 1}: </span>{s}
+                  </div>
+                ) : null)}
+              </div>
+            </div>
+          )}
+
+          {isCommand && (
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+              {alreadyInProduction ? (
+                <span style={{ fontSize: 12, color: 'var(--text3)', alignSelf: 'center' }}>Already in Production →</span>
+              ) : (
+                <form action={promoteAction}>
+                  <input type="hidden" name="idea_id" value={i.id} />
+                  <input type="hidden" name="brand_id" value={i.brand_id || ''} />
+                  <input type="hidden" name="campaign_id" value={i.campaign_id || ''} />
+                  <input type="hidden" name="title" value={i.title || ''} />
+                  <button className="btn bl" type="submit" disabled={promoting}>Promote to Production →</button>
+                </form>
+              )}
+            </div>
+          )}
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -3375,10 +3506,11 @@ function IdeasView({ ideas, content = [], brands, campaigns, brandById, isComman
                   </div>
                 )}
                 <DateRow publish={i.publish_date} production={i.production_due} edit={i.edit_due} />
-                {isCommand && (
-                  <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
-                    {alreadyInProduction ? (
-                      <span style={{ fontSize: 12, color: 'var(--text3)' }}>Already in Production →</span>
+                <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+                  <button type="button" className="btn bg" style={{ fontSize: 12 }} onClick={() => setViewing(i)}>👁 View</button>
+                  {isCommand && (
+                    alreadyInProduction ? (
+                      <span style={{ fontSize: 12, color: 'var(--text3)', alignSelf: 'center' }}>Already in Production →</span>
                     ) : (
                       <form action={promoteAction} style={{ display: 'inline' }}>
                         <input type="hidden" name="idea_id" value={i.id} />
@@ -3387,13 +3519,15 @@ function IdeasView({ ideas, content = [], brands, campaigns, brandById, isComman
                         <input type="hidden" name="title" value={i.title || ''} />
                         <button className="btn bg" type="submit" disabled={promoting} style={{ fontSize: 12 }}>Promote to Production →</button>
                       </form>
-                    )}
+                    )
+                  )}
+                  {isCommand && (
                     <form action={deleteAction} style={{ display: 'inline' }}>
                       <input type="hidden" name="id" value={i.id} />
                       <button className="btn bg" type="submit" disabled={deletingIdea} style={{ fontSize: 12, color: '#ff6464', borderColor: 'rgba(255,100,100,.35)' }}>🗑</button>
                     </form>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             );
           })}
@@ -3771,6 +3905,9 @@ function ProductionView({ content, ideas = [], brands, campaigns, brandById, isC
                       <div className="ap-card-t">{i.title}</div>
                       {i.body && <div style={{ fontSize: 11, color: 'var(--text3)', margin: '4px 0', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{i.body}</div>}
                       <div className="ap-card-m"><span className="ap-chip" style={{ background: bc + '22', color: bc }}>{b?.name || 'Unassigned'}</span>{(i.attachments || []).length > 0 && <span className="ap-chip" style={{ background: 'var(--bg2)', color: 'var(--text3)', marginLeft: 6 }}>🔗 {(i.attachments || []).length}</span>}</div>
+                      <div style={{ marginTop: 8 }} onClick={(e) => e.stopPropagation()}>
+                        <button type="button" className="btn bg" style={{ fontSize: 11, padding: '3px 7px' }} onClick={() => setViewing(i)}>👁 View</button>
+                      </div>
                       {isCommand && (
                         <div style={{ display: 'flex', gap: 5, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
                           {prevOf[i.status] && (
