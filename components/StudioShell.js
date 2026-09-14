@@ -29,6 +29,30 @@ function initials(name = '') {
   return name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 }
 
+// Shared labeled-field wrapper for the older forms below (Campaign, Brand).
+// IMPORTANT: this must stay a module-level declaration, not something
+// redefined inside a component's render body. A component function created
+// inside another component's render gets a brand-new function identity on
+// every render, so React treats it as a different element type on the next
+// render and unmounts + remounts its whole subtree instead of updating it —
+// which resets any uncontrolled (defaultValue) input inside back to its
+// initial value. That was the cause of the "start date resets when you add
+// a content pillar" bug: typing in a pillar field updated state local to
+// CampaignForm, which re-rendered CampaignForm, which used to redefine a
+// local `Field` component on every keystroke and wipe the defaultValue-based
+// Start/End date (and Campaign name / Goal) fields it wrapped.
+const FIELD_LABEL_STYLE = { fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text3)', marginBottom: 6, display: 'block' };
+const FIELD_HINT_STYLE = { fontSize: 11, color: 'var(--text3)', marginTop: 5 };
+function Field({ label, children, sub }) {
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <label style={FIELD_LABEL_STYLE}>{label}</label>
+      {children}
+      {sub && <div style={FIELD_HINT_STYLE}>{sub}</div>}
+    </div>
+  );
+}
+
 export default function StudioShell({ profile, email, content, brands = [], campaigns = [], ideas = [], assets = [], mcThemes = [], mcItems = [], mcAssets = [], googleConnected = false }) {
   const role = profile.role === 'command' ? 'command' : 'freelance';
   const visibleNav = NAV.filter((n) => n.roles.includes(role));
@@ -636,15 +660,8 @@ function CampaignForm({ campaign, brands = [], onDone, onCancel }) {
   const updatePillar = (i, key, val) =>
     setPillars((p) => p.map((row, idx) => (idx === i ? { ...row, [key]: val } : row)));
 
-  const lbl = { fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text3)', marginBottom: 6, display: 'block' };
   const inp = { width: '100%', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--rs)', padding: '9px 12px', color: 'var(--text)', fontSize: 13, fontFamily: "'Inter',sans-serif" };
   const ta = (h = 80) => ({ ...inp, minHeight: h, resize: 'vertical' });
-  const Field = ({ label, children }) => (
-    <div style={{ marginBottom: 16 }}>
-      <label style={lbl}>{label}</label>
-      {children}
-    </div>
-  );
 
   return (
     <>
@@ -1377,13 +1394,6 @@ function BrandForm({ brand, onDone, onCancel }) {
   const inp = { width: '100%', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--rs)', padding: '9px 12px', color: 'var(--text)', fontSize: 13, fontFamily: "'Inter',sans-serif" };
   const ta = (h = 80) => ({ ...inp, minHeight: h, resize: 'vertical' });
   const hint = { fontSize: 11, color: 'var(--text3)', marginTop: 5 };
-  const Field = ({ label, children, sub }) => (
-    <div style={{ marginBottom: 16 }}>
-      <label style={lbl}>{label}</label>
-      {children}
-      {sub && <div style={hint}>{sub}</div>}
-    </div>
-  );
 
   async function handleIcon(e) {
     const file = e.target.files?.[0];
