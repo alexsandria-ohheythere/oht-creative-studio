@@ -716,7 +716,7 @@ function CampaignForm({ campaign, brands = [], onDone, onCancel }) {
         {/* Content Pillars editor — serialized to a hidden JSON field. */}
         <input type="hidden" name="pillars" value={JSON.stringify(pillars.filter((p) => (p.name || '').trim()))} />
         <div style={{ marginBottom: 16 }}>
-          <label style={lbl}>Content Pillars</label>
+          <label style={FIELD_LABEL_STYLE}>Content Pillars</label>
           <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 10, lineHeight: 1.5 }}>
             Define the themes this campaign produces against. Each pillar becomes selectable when you create ideas in Content → Ideas.
           </div>
