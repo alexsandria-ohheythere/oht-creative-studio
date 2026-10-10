@@ -11,7 +11,7 @@ import {
   saveMcAsset, deleteMcAsset,
 } from '../app/dashboard/mc-actions';
 import {
-  saveIdea, deleteIdea, duplicateIdea, setIdeaReady, promoteIdeaToProduction,
+  saveIdea, deleteIdea, duplicateIdea, setIdeaReady, setIdeaPublished, promoteIdeaToProduction,
   saveContent, setContentStatus, deleteContent, setContentAttachments,
 } from '../app/dashboard/content-actions';
 import { createClient as createBrowserClient } from '../lib/supabase-browser';
@@ -276,7 +276,7 @@ export default function StudioShell({ profile, email, content, brands = [], camp
             )}
 
             {parentId === 'publishing' && (
-              <PublishingCenter content={content} ideas={ideas} brands={brands} brandColor={brandColor} subView={subView} />
+              <PublishingCenter content={content} ideas={ideas} brands={brands} brandColor={brandColor} subView={subView} isCommand={isCommand} />
             )}
 
             {parentId === 'insights' && (
@@ -2057,6 +2057,21 @@ const cTa = (h = 80) => ({ ...cInp, minHeight: h, resize: 'vertical' });
 function CField({ label, children }) {
   return <div style={{ marginBottom: 14 }}><label style={cLbl}>{label}</label>{children}</div>;
 }
+// Published status for Content Bucket rows (ideas.published_at). Shared by
+// the Content Bucket table/detail and the Publishing Center.
+const PUBLISHED_COLOR = '#4FA3E0';
+function fmtPublished(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  if (isNaN(d)) return '';
+  return d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' });
+}
+function rowStatus(i) {
+  if (i.published_at) return { text: 'Published', color: PUBLISHED_COLOR };
+  if (i.ready) return { text: 'Ready', color: '#64BC46' };
+  return { text: 'Draft', color: '#9494AA' };
+}
+
 function Pill({ text, color }) {
   return <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color, background: color + '22', padding: '3px 8px', borderRadius: 20 }}>{text}</span>;
 }
@@ -3362,6 +3377,7 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
   const [editing, setEditing] = useState(null);
   const [state, formAction, pending] = useActionState(saveIdea, {});
   const [, readyAction, togglingReady] = useActionState(setIdeaReady, {});
+  const [pubState, publishAction, togglingPublished] = useActionState(setIdeaPublished, {});
   const [delState, deleteAction, deletingIdea] = useActionState(deleteIdea, {});
   const [dupState, duplicateAction, duplicating] = useActionState(duplicateIdea, {});
   const [brandId, setBrandId] = useState('');
@@ -3380,7 +3396,7 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
   const [fPillar, setFPillar] = useState('all');
   const [fChannel, setFChannel] = useState('all');
   const [fFormat, setFFormat] = useState('all');
-  const [fReady, setFReady] = useState('all'); // all | ready | draft
+  const [fReady, setFReady] = useState('all'); // all | ready | draft | published | unpublished
   const [fFrom, setFFrom] = useState('');
   const [fTo, setFTo] = useState('');
   const [sortKey, setSortKey] = useState(null); // title | brand | pillar | channel | format | publish_date | ready
@@ -3427,6 +3443,14 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
     fd.set('ready', (!i.ready).toString());
     readyAction(fd);
   }
+  function togglePublished(i) {
+    const fd = new FormData();
+    fd.set('id', i.id);
+    fd.set('published', (!i.published_at).toString());
+    publishAction(fd);
+    // Keep the open detail popup in sync without waiting for the refresh.
+    setViewing((v) => (v && v.id === i.id ? { ...v, published_at: i.published_at ? null : new Date().toISOString(), ready: i.published_at ? v.ready : true } : v));
+  }
 
   // Distinct values actually present in the data, so dropdowns only ever
   // show options that could return results (no picking "Reels" and getting
@@ -3442,8 +3466,10 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
     if (fPillar !== 'all' && i.pillar !== fPillar) return false;
     if (fChannel !== 'all' && i.channel !== fChannel) return false;
     if (fFormat !== 'all' && i.format !== fFormat) return false;
-    if (fReady === 'ready' && !i.ready) return false;
-    if (fReady === 'draft' && i.ready) return false;
+    if (fReady === 'ready' && (!i.ready || i.published_at)) return false;
+    if (fReady === 'draft' && (i.ready || i.published_at)) return false;
+    if (fReady === 'published' && !i.published_at) return false;
+    if (fReady === 'unpublished' && i.published_at) return false;
     if (fFrom && (!i.publish_date || i.publish_date < fFrom)) return false;
     if (fTo && (!i.publish_date || i.publish_date > fTo)) return false;
     return true;
@@ -3457,6 +3483,7 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
       let av, bv;
       if (sortKey === 'brand') { av = brandById(a.brand_id)?.name || ''; bv = brandById(b.brand_id)?.name || ''; }
       else if (sortKey === 'ready') { av = a.ready ? 1 : 0; bv = b.ready ? 1 : 0; }
+      else if (sortKey === 'published_at') { av = a.published_at || ''; bv = b.published_at || ''; }
       else { av = a[sortKey] || ''; bv = b[sortKey] || ''; }
       if (av < bv) return sortDir === 'asc' ? -1 : 1;
       if (av > bv) return sortDir === 'asc' ? 1 : -1;
@@ -3495,7 +3522,8 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
             {i.pillar && <span className="ap-chip" style={{ background: 'var(--bg3)', color: 'var(--text2)' }}>{i.pillar}</span>}
             {i.channel && <span className="ap-chip" style={{ background: cc + '22', color: cc }}>{i.channel}</span>}
             {i.format && <span className="ap-chip" style={{ background: 'var(--bg3)', color: 'var(--text3)' }}>{i.format}</span>}
-            <Pill text={i.ready ? 'Ready' : 'Draft'} color={i.ready ? '#64BC46' : '#9494AA'} />
+            <Pill text={rowStatus(i).text} color={rowStatus(i).color} />
+            {i.published_at && <span style={{ fontSize: 11, color: 'var(--text3)' }}>on {fmtPublished(i.published_at)}</span>}
           </div>
 
           <DateRow publish={i.publish_date} production={i.production_due} edit={i.edit_due} />
@@ -3529,6 +3557,10 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
           {isCommand && (
             <div style={{ display: 'flex', gap: 10, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
               <button type="button" className="btn bl" onClick={() => { setViewing(null); openEditRow(i); }}>✎ Edit</button>
+              <button type="button" className="btn bg" disabled={togglingPublished} onClick={() => togglePublished(i)}
+                style={i.published_at ? { color: PUBLISHED_COLOR, borderColor: PUBLISHED_COLOR + '66' } : undefined}>
+                {i.published_at ? '↺ Unmark published' : '✓ Mark published'}
+              </button>
             </div>
           )}
         </div>
@@ -3543,13 +3575,13 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
       <div className="ph">
         <div>
           <div className="pt">Content Bucket</div>
-          <div className="ps">{ideas.length} rows across {campaigns.length || 0} campaign{campaigns.length === 1 ? '' : 's'} · fill rows fast, then flip a row to Ready to pop it into Ideas</div>
+          <div className="ps">{ideas.length} rows across {campaigns.length || 0} campaign{campaigns.length === 1 ? '' : 's'} · {ideas.filter((x) => x.published_at).length} published · fill rows fast, then flip a row to Ready to pop it into Ideas</div>
         </div>
         {isCommand && !showForm && <button type="button" className="btn bl" onClick={() => openNewRow(campaigns[0]?.id || '')}>＋ New row</button>}
       </div>
 
-      {(state?.error || delState?.error || dupState?.error) && (
-        <div className="ap-note" style={{ borderColor: 'rgba(255,100,100,.35)', color: '#ff6464' }}>{state?.error || delState?.error || dupState?.error}</div>
+      {(state?.error || delState?.error || dupState?.error || pubState?.error) && (
+        <div className="ap-note" style={{ borderColor: 'rgba(255,100,100,.35)', color: '#ff6464' }}>{state?.error || delState?.error || dupState?.error || pubState?.error}</div>
       )}
 
       {showForm && (
@@ -3708,11 +3740,13 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
               <input style={cInp} type="date" value={fTo} onChange={(e) => setFTo(e.target.value)} />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 110 }}>
-              <label style={cLbl}>Ready</label>
+              <label style={cLbl}>Status</label>
               <select style={cInp} value={fReady} onChange={(e) => setFReady(e.target.value)}>
                 <option value="all">All</option>
-                <option value="ready">Ready</option>
                 <option value="draft">Draft</option>
+                <option value="ready">Ready</option>
+                <option value="published">Published</option>
+                <option value="unpublished">Not published</option>
               </select>
             </div>
             {hasActiveFilter && (
@@ -3755,6 +3789,7 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
                           { key: 'format', label: 'Format' },
                           { key: 'publish_date', label: 'Publish' },
                           { key: 'ready', label: 'Ready' },
+                          { key: 'published_at', label: 'Published' },
                           { key: null, label: '' },
                         ].map((h) => (
                           <th key={h.label || 'actions'}
@@ -3793,6 +3828,19 @@ function ContentBucketView({ ideas, brands, campaigns, brandById, isCommand }) {
                                 </button>
                               ) : (
                                 <Pill text={i.ready ? 'Ready' : 'Draft'} color={i.ready ? '#64BC46' : '#9494AA'} />
+                              )}
+                            </td>
+                            <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
+                              {isCommand ? (
+                                <button type="button" className="btn bg" disabled={togglingPublished} onClick={() => togglePublished(i)}
+                                  title={i.published_at ? `Published ${fmtPublished(i.published_at)} — click to undo` : 'Mark this as published'}
+                                  style={i.published_at ? { fontSize: 10, padding: '3px 8px', color: PUBLISHED_COLOR, borderColor: PUBLISHED_COLOR + '66' } : { fontSize: 10, padding: '3px 8px' }}>
+                                  {i.published_at ? '✓ Published' : 'Mark published'}
+                                </button>
+                              ) : (
+                                i.published_at
+                                  ? <span title={fmtPublished(i.published_at)}><Pill text="Published" color={PUBLISHED_COLOR} /></span>
+                                  : <span style={{ color: 'var(--text3)' }}>—</span>
                               )}
                             </td>
                             <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
@@ -4507,7 +4555,7 @@ function ProductionView({ content, ideas = [], brands, campaigns, brandById, isC
 // =====================================================================
 // PUBLISHING CENTER — calendar of scheduled content across channels
 // =====================================================================
-function PublishingCenter({ content, ideas = [], brands, brandColor, subView }) {
+function PublishingCenter({ content, ideas = [], brands, brandColor, subView, isCommand = false }) {
   if (subView === 'channels') {
     return <ChannelsView ideas={ideas} brands={brands} brandColor={brandColor} />;
   }
@@ -4515,6 +4563,14 @@ function PublishingCenter({ content, ideas = [], brands, brandColor, subView }) 
   const now = new Date();
   const [view, setView] = useState('month');
   const [viewing, setViewing] = useState(null); // idea opened from a clicked calendar/table entry
+  const [pubState, publishAction, togglingPublished] = useActionState(setIdeaPublished, {});
+  function togglePublished(i) {
+    const fd = new FormData();
+    fd.set('id', i.id);
+    fd.set('published', (!i.published_at).toString());
+    publishAction(fd);
+    setViewing((v) => (v && v.id === i.id ? { ...v, published_at: i.published_at ? null : new Date().toISOString() } : v));
+  }
   // Brand filter: 'all' shows everything; otherwise a brand id scopes the calendar.
   const [brandFilter, setBrandFilter] = useState('all');
   const year = now.getFullYear();
@@ -4564,6 +4620,8 @@ function PublishingCenter({ content, ideas = [], brands, brandColor, subView }) 
             {i.pillar && <span className="ap-chip" style={{ background: 'var(--bg3)', color: 'var(--text2)' }}>{i.pillar}</span>}
             {i.channel && <span className="ap-chip" style={{ background: cc + '22', color: cc }}>{i.channel}</span>}
             {i.format && <span className="ap-chip" style={{ background: 'var(--bg3)', color: 'var(--text3)' }}>{i.format}</span>}
+            {i.published_at && <Pill text="Published" color={PUBLISHED_COLOR} />}
+            {i.published_at && <span style={{ fontSize: 11, color: 'var(--text3)' }}>on {fmtPublished(i.published_at)}</span>}
           </div>
 
           <DateRow publish={i.publish_date} production={i.production_due} edit={i.edit_due} />
@@ -4592,6 +4650,16 @@ function PublishingCenter({ content, ideas = [], brands, brandColor, subView }) 
 
           {!i.hook && !i.script && !i.visual_refs && !i.reference_links && !i.caption && !i.hashtags && !i.mandatories && !i.notes && (
             <div style={{ fontSize: 12, color: 'var(--text3)' }}>No additional details filled in yet.</div>
+          )}
+
+          {pubState?.error && <div style={{ fontSize: 12, color: '#ff6464' }}>{pubState.error}</div>}
+          {isCommand && (
+            <div style={{ display: 'flex', gap: 10, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+              <button type="button" className="btn bg" disabled={togglingPublished} onClick={() => togglePublished(i)}
+                style={i.published_at ? { color: PUBLISHED_COLOR, borderColor: PUBLISHED_COLOR + '66' } : undefined}>
+                {i.published_at ? '↺ Unmark published' : '✓ Mark published'}
+              </button>
+            </div>
           )}
         </div>
       </Modal>
@@ -4663,7 +4731,7 @@ function PublishingCenter({ content, ideas = [], brands, brandColor, subView }) 
                       style={{ background: cc + '2e', color: cc, cursor: 'pointer' }}
                       onClick={() => setViewing(e)}
                     >
-                      {e.title}
+                      {e.published_at ? '✓ ' : ''}{e.title}
                     </div>
                   );
                 })}
@@ -4690,7 +4758,7 @@ function PublishingCenter({ content, ideas = [], brands, brandColor, subView }) 
                 <div className="tdt">{i.title}</div>
                 <div className="td"><span className="sb2" style={{ background: bc + '22', color: bc }}>{b?.name || 'Unassigned'}</span></div>
                 <div className="td">{i.channel ? <span className="sb2" style={{ background: cc + '22', color: cc }}>{i.channel}</span> : '—'}</div>
-                <div className="td">{i.publish_date || '—'}</div>
+                <div className="td">{i.publish_date || '—'}{i.published_at && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 600, color: PUBLISHED_COLOR }}>✓ Published</span>}</div>
               </div>
             );
           })}
