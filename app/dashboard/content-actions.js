@@ -20,6 +20,9 @@ import { createClient } from '../../lib/supabase-server';
 //                  status in ('new','approved','archived')
 //                  ready: false = row lives in the Content Bucket table only,
 //                         true  = also shown as a card in the Ideas module
+//                  published_at (timestamptz, null = not published yet) —
+//                         set by "Mark published"; drives the Published
+//                         status in the Content Bucket + Publishing Center
 //   content_items: id, brand_id, idea_id, brief_id(legacy, unused), campaign_id,
 //                  title, body, status
 //                  status in ('command_review','in_production','review','approved')
@@ -129,6 +132,26 @@ export async function setIdeaReady(prevState, formData) {
   const supabase = await createClient();
   const res = await writeBack(
     supabase.from('ideas').update({ ready }).eq('id', id)
+  );
+  if (res.ok) revalidatePath('/dashboard');
+  return res;
+}
+
+// Mark a Content Bucket row as Published (or undo it). Stamps published_at
+// with the moment it was marked, so the bucket shows "Published" and the
+// Publishing Center calendar can tick it off. Unmarking clears it back to
+// null. Publishing also forces ready = true — anything that went out was,
+// by definition, ready.
+export async function setIdeaPublished(prevState, formData) {
+  const id = nz(formData.get('id'));
+  const published = formData.get('published') === 'true';
+  if (!id) return { error: 'Missing idea id.' };
+  const supabase = await createClient();
+  const patch = published
+    ? { published_at: new Date().toISOString(), ready: true }
+    : { published_at: null };
+  const res = await writeBack(
+    supabase.from('ideas').update(patch).eq('id', id)
   );
   if (res.ok) revalidatePath('/dashboard');
   return res;
