@@ -73,6 +73,31 @@ export default function StudioShell({ profile, email, content, brands = [], camp
   const [clicked, setClicked] = useState(null); // id pulsing right now (click feedback)
   const [drawer, setDrawer] = useState(false);
   const [openGroups, setOpenGroups] = useState({}); // expandable sub-nav
+  // Desktop sidebar collapse. Remembered per browser so it stays the way
+  // you left it across refreshes. (Mobile keeps its own slide-out drawer.)
+  const [sbCollapsed, setSbCollapsed] = useState(false);
+  useEffect(() => {
+    try { setSbCollapsed(window.localStorage.getItem('oht.sbCollapsed') === '1'); } catch (_) {}
+  }, []);
+  function toggleSidebar() {
+    setSbCollapsed((v) => {
+      const next = !v;
+      try { window.localStorage.setItem('oht.sbCollapsed', next ? '1' : '0'); } catch (_) {}
+      return next;
+    });
+  }
+  // Keyboard shortcut: Cmd+B (Mac) / Ctrl+B — ignored while typing in a field.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'b') return;
+      const t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      e.preventDefault();
+      toggleSidebar();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   // On mount, adopt the section named in the URL hash so a refresh or a
   // shared/bookmarked link (e.g. /dashboard#camp) lands on the right module.
@@ -161,7 +186,7 @@ export default function StudioShell({ profile, email, content, brands = [], camp
       </div>
       <div className={`sb-backdrop ${drawer ? 'show' : ''}`} onClick={() => setDrawer(false)} />
 
-      <div className="shell">
+      <div className={`shell ${sbCollapsed ? 'sb-collapsed' : ''}`}>
         <aside className={`sb ${drawer ? 'open' : ''}`}>
           <div className="sb-logo">
             <div className="logo-mark">OH HEY THERE Corp.</div>
@@ -248,6 +273,20 @@ export default function StudioShell({ profile, email, content, brands = [], camp
 
         <main className="main">
           <div className="topbar">
+            <button
+              type="button"
+              className="sb-toggle"
+              onClick={toggleSidebar}
+              aria-label={sbCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+              aria-expanded={!sbCollapsed}
+              title={sbCollapsed ? 'Show sidebar (⌘B)' : 'Hide sidebar (⌘B)'}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <rect x="3" y="4" width="18" height="16" rx="3" />
+                <line x1="9" y1="4" x2="9" y2="20" />
+                {sbCollapsed ? <polyline points="13,9.5 15.5,12 13,14.5" /> : <polyline points="16,9.5 13.5,12 16,14.5" />}
+              </svg>
+            </button>
             <div className="tb-title">{activeLabel}</div>
             <div className="tb-search"><span>⌕</span><span>Search everything…</span><span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text3)', border: '1px solid var(--border)', padding: '1px 5px', borderRadius: 3 }}>⌘K</span></div>
             <div className="tb-acts">
