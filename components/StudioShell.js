@@ -127,9 +127,12 @@ export default function StudioShell({ profile, email, content, brands = [], camp
       }
     }
   }
-  function toggleGroup(id, e) {
-    e.stopPropagation();
-    setOpenGroups((g) => ({ ...g, [id]: !g[id] }));
+  // `current` is the group's on-screen state. The active group defaults to
+  // open (openGroups[id] is undefined), so flipping the stored value alone
+  // would turn undefined -> true and the first click would do nothing.
+  function toggleGroup(id, current, e) {
+    if (e) e.stopPropagation();
+    setOpenGroups((g) => ({ ...g, [id]: !current }));
   }
 
   // Resolve which panel renders for the active id.
@@ -178,7 +181,12 @@ export default function StudioShell({ profile, email, content, brands = [], camp
                     <div
                       className={`ni ${on ? 'on' : ''} ${n.flagship ? 'flagship' : ''} ${clicked === (hasKids ? n.children[0].id : n.id) ? 'pulse' : ''}`}
                       style={on ? { boxShadow: `inset 3px 0 0 ${GROUP_COLOR[sec] || 'var(--pink)'}` } : {}}
-                      onClick={() => go(hasKids ? (n.children[0].id) : n.id)}
+                      onClick={() => {
+                        // Tapping the header of the group you're already in
+                        // collapses/expands it instead of re-navigating.
+                        if (hasKids && on) toggleGroup(n.id, expanded);
+                        else go(hasKids ? (n.children[0].id) : n.id);
+                      }}
                     >
                       <span
                         className="ni-ic"
@@ -189,7 +197,13 @@ export default function StudioShell({ profile, email, content, brands = [], camp
                       {n.pill && <span className="ni-pill">{n.pill}</span>}
                       {n.id === 'camp' && <span className="ni-pill">{campaigns.length}</span>}
                       {hasKids && (
-                        <span className="ni-caret" onClick={(e) => toggleGroup(n.id, e)}>
+                        <span
+                          className="ni-caret"
+                          role="button"
+                          aria-label={expanded ? `Collapse ${n.label}` : `Expand ${n.label}`}
+                          aria-expanded={expanded}
+                          onClick={(e) => toggleGroup(n.id, expanded, e)}
+                        >
                           {expanded ? '▾' : '▸'}
                         </span>
                       )}
