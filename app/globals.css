@@ -51,7 +51,22 @@ a { color:inherit; text-decoration:none; }
   border-right:1px solid var(--border);
   display:flex; flex-direction:column; padding:18px 14px;
   position:sticky; top:0; height:100vh; overflow-y:auto;
+  transition:width .2s ease, flex-basis .2s ease, padding .2s ease, opacity .15s ease;
 }
+
+/* Collapsed sidebar (desktop) — toggled from the topbar button or ⌘B / Ctrl+B. */
+.shell.sb-collapsed .sb {
+  width:0; flex-basis:0; padding-left:0; padding-right:0;
+  border-right:none; overflow:hidden; opacity:0; pointer-events:none;
+}
+.sb-toggle {
+  display:inline-flex; align-items:center; justify-content:center;
+  width:34px; height:34px; margin-left:-8px; flex:0 0 auto;
+  background:transparent; border:1px solid transparent; border-radius:8px;
+  color:var(--text2); cursor:pointer;
+}
+.sb-toggle:hover { background:var(--bg-hover); color:var(--text); border-color:var(--border); }
+.sb-toggle:focus-visible { outline:2px solid var(--pink); outline-offset:2px; }
 
 .sb-logo { margin-bottom:22px; padding:0 6px; }
 .logo-mark { font-size:11px; font-weight:700; letter-spacing:.04em; color:var(--text2); }
@@ -337,6 +352,7 @@ a { color:inherit; text-decoration:none; }
     transform:translateX(-100%); transition:transform .2s ease;
   }
   .sb.open { transform:translateX(0); }
+  .shell.sb-collapsed .sb { width:248px; flex-basis:248px; padding:18px 14px; border-right:1px solid var(--border); overflow-y:auto; opacity:1; pointer-events:auto; }
   .sb-backdrop.show { display:block; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:25; }
   .content { padding:18px; }
   .ap-board { grid-template-columns:1fr; }
